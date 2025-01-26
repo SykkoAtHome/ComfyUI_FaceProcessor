@@ -10,7 +10,7 @@ class GPUDeformer:
     """
 
     @staticmethod
-    def warp_face(image, source_landmarks, target_landmarks, device='cuda'):
+    def warp_face(image, source_landmarks, target_landmarks):
         """
         Warp the face image using parallel GPU processing with reverse mapping.
         Now includes boundary triangles for complete image warping.
@@ -19,7 +19,6 @@ class GPUDeformer:
             image: Input PIL Image or numpy array
             source_landmarks: Detected face landmarks
             target_landmarks: Target base landmarks
-            device: 'cuda' or 'cpu' (default: 'cuda')
 
         Returns:
             PIL Image: Warped image
