@@ -99,19 +99,6 @@ class MediapipeBaseLandmarks:
         cls._faces = faces
         return cls._base_landmarks, cls._faces
 
-    @staticmethod
-    def interpolate_edge_points(start_pos, end_pos, n_segments):
-        """
-        Interpolate points along an edge
-        """
-        points = []
-        for i in range(n_segments + 1):
-            t = i / n_segments
-            x = round(start_pos[0] + t * (end_pos[0] - start_pos[0]))
-            y = round(start_pos[1] + t * (end_pos[1] - start_pos[1]))
-            points.append((x, y))
-        return points
-
     @classmethod
     def create_boundary_triangles(cls, size):
         """
@@ -131,28 +118,28 @@ class MediapipeBaseLandmarks:
             'top': {
                 'landmarks': [54, 103, 67, 109, 10, 338, 297, 332, 284],
                 'start': (0, 0),
-                'middle': (width / 2, 0),
-                'end': (width, 0),
+                'middle': (0.5, 0),
+                'end': (1, 0),
                 'segments': 8
             },
             'right': {
                 'landmarks': [284, 251, 389, 356, 454, 323, 361, 288, 397, 365],
-                'start': (width, 0),
-                'middle': (width, height / 2),
-                'end': (width, height),
+                'start': (1, 0),
+                'middle': (1, 0.5),
+                'end': (1, 1),
                 'segments': 9
             },
             'bottom': {
                 'landmarks': [365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136],
-                'start': (width, height),
-                'middle': (width / 2, height),
-                'end': (0, height),
+                'start': (1, 1),
+                'middle': (0.5, 1),
+                'end': (0, 1),
                 'segments': 10
             },
             'left': {
                 'landmarks': [136, 172, 58, 132, 93, 234, 127, 162, 21, 54],
-                'start': (0, height),
-                'middle': (0, height / 2),
+                'start': (0, 1),
+                'middle': (0, 0.5),
                 'end': (0, 0),
                 'segments': 9
             }
@@ -167,7 +154,7 @@ class MediapipeBaseLandmarks:
             n_segments = edge_info['segments']
             print(f"Creating {n_segments} segments for {len(landmarks)} landmarks")
 
-            # Generate edge points
+            # Generate normalized edge points
             edge_points = cls.interpolate_edge_points(
                 edge_info['start'],
                 edge_info['end'],
@@ -201,6 +188,66 @@ class MediapipeBaseLandmarks:
 
         return cls._boundary_faces
 
+    @staticmethod
+    def interpolate_edge_points(start_pos, end_pos, n_segments):
+        """
+        Interpolate points along an edge
+        """
+        points = []
+        for i in range(n_segments + 1):
+            t = i / n_segments
+            x = start_pos[0] + t * (end_pos[0] - start_pos[0])
+            y = start_pos[1] + t * (end_pos[1] - start_pos[1])
+            points.append((x, y))
+        return points
+
+    @classmethod
+    def get_face_triangles(cls, size=None, x_scale=1.0, y_translation=0.0):
+        """
+        Get face triangulation including boundary triangles with optional transformations
+
+        Args:
+            size: Target size (int or tuple)
+            x_scale: Horizontal scaling factor (0.5 to 1.0)
+            y_translation: Vertical translation (-0.5 to 0.5)
+
+        Returns:
+            tuple: (triangles array, landmarks array)
+        """
+        landmarks, faces = cls._load_obj_data()
+
+        # Create boundary triangles if needed (using normalized coordinates)
+        if cls._boundary_faces is None:
+            cls.create_boundary_triangles(size)
+
+        # Apply transformations to landmarks
+        landmarks = cls._transform_landmarks(landmarks, x_scale, y_translation)
+
+        if size is not None:
+            if isinstance(size, tuple):
+                scaled_landmarks = landmarks * np.array(size)
+                if cls._boundary_landmarks is not None:
+                    boundary_landmarks = cls._boundary_landmarks * np.array(size)
+                    if y_translation != 0:
+                        boundary_landmarks = boundary_landmarks.copy()
+                        boundary_landmarks[:, 1] += y_translation * size[1]
+            else:
+                scaled_landmarks = landmarks * size
+                if cls._boundary_landmarks is not None:
+                    boundary_landmarks = cls._boundary_landmarks * size
+                    if y_translation != 0:
+                        boundary_landmarks = boundary_landmarks.copy()
+                        boundary_landmarks[:, 1] += y_translation * size
+
+            if cls._boundary_faces is not None:
+                all_points = np.vstack([scaled_landmarks, boundary_landmarks])
+                all_triangles = np.vstack([faces, cls._boundary_faces])
+                return all_triangles, all_points
+
+        return faces, landmarks
+
+
+
     @classmethod
     def get_base_landmarks(cls, size=None, x_scale=1.0, y_translation=0.0):
         """
@@ -227,48 +274,7 @@ class MediapipeBaseLandmarks:
 
         return landmarks
 
-    @classmethod
-    def get_face_triangles(cls, size=None, x_scale=1.0, y_translation=0.0):
-        """
-        Get face triangulation including boundary triangles with optional transformations
 
-        Args:
-            size: Target size (int or tuple)
-            x_scale: Horizontal scaling factor (0.5 to 1.0)
-            y_translation: Vertical translation (-0.5 to 0.5)
-
-        Returns:
-            tuple: (triangles array, landmarks array)
-        """
-        landmarks, faces = cls._load_obj_data()
-
-        # Apply transformations
-        landmarks = cls._transform_landmarks(landmarks, x_scale, y_translation)
-
-        if size is not None:
-            if isinstance(size, tuple):
-                scaled_landmarks = landmarks * np.array(size)
-            else:
-                scaled_landmarks = landmarks * size
-
-            if cls._boundary_faces is None:
-                cls.create_boundary_triangles(size)
-
-            if cls._boundary_faces is not None:
-                # Transform boundary landmarks if they exist
-                if cls._boundary_landmarks is not None:
-                    boundary_landmarks = cls._boundary_landmarks
-                    # Note: We don't apply x_scale to boundary landmarks as they should
-                    # stay at the image edges, but we do apply y_translation
-                    if y_translation != 0:
-                        boundary_landmarks = boundary_landmarks.copy()
-                        boundary_landmarks[:, 1] += y_translation * (size if isinstance(size, int) else size[1])
-
-                    all_points = np.vstack([scaled_landmarks, boundary_landmarks])
-                    all_triangles = np.vstack([faces, cls._boundary_faces])
-                    return all_triangles, all_points
-
-        return faces, landmarks
 
     @staticmethod
     def validate_size(size):
