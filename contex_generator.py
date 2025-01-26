@@ -57,10 +57,10 @@ def generate_context_file(
 
 # Example usage
 if __name__ == "__main__":
-    output_file = "D:/code/code_base/face_processor_02.txt"
+    output_file = "D:/code/code_base/face_processor_03.txt"
     generate_context_file(
         root_dir="E:/ComfyUI-DEV/custom_nodes/ComfyUI_FaceProcessor",
         output_file=output_file,
         ignore_dirs={".git", "__pycache__", ".venv", "venv", ".idea", "node_modules", "models"},
-        ignore_files={".gitignore", "contex_generator.py", output_file, "package-lock.json", "TODO.txt"},
+        ignore_files={".gitignore", "contex_generator.py", output_file, "package-lock.json", "TODO.txt", "mediapipe_landmarks_468.obj"},
     )
