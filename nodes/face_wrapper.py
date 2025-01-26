@@ -25,7 +25,7 @@ class FaceWrapper:
                     "default": False,
                 }),
                 "landmark_size": ("INT", {
-                    "default": 4,
+                    "default": 2,
                     "min": 1,
                     "max": 10,
                     "step": 1
@@ -37,18 +37,18 @@ class FaceWrapper:
                     "default": 1.0,
                     "min": 0.5,
                     "max": 1.0,
-                    "step": 0.01
+                    "step": 0.05
                 }),
                 "y_transform": ("FLOAT", {
                     "default": 0.0,
                     "min": -0.5,
                     "max": 0.5,
-                    "step": 0.01
+                    "step": 0.05
                 })
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "FACE_LANDMARKS")
+    RETURN_TYPES = ("IMAGE", "DICT")
     RETURN_NAMES = ("image", "landmarks")
     FUNCTION = "detect_face"
     CATEGORY = "Face Processor"
@@ -75,7 +75,6 @@ class FaceWrapper:
 
         # Start with original image
         result_image = image_np.astype(np.float32) / 255.0
-
         overlays = []
 
         # Create detected landmarks overlay if requested
@@ -91,16 +90,15 @@ class FaceWrapper:
             if landmark_overlay is not None:
                 overlays.append(landmark_overlay)
 
+        # Get base landmarks with transformations
+        base_landmarks = MediapipeBaseLandmarks.get_base_landmarks(
+            (width, height),
+            x_scale=x_scale,
+            y_translation=y_transform
+        )
+
         # Create target landmarks overlay if requested
         if show_target:
-            # Get base landmarks with transformations
-            base_landmarks = MediapipeBaseLandmarks.get_base_landmarks(
-                (width, height),
-                x_scale=x_scale,
-                y_translation=y_transform
-            )
-
-            # Convert to DataFrame format for visualization
             base_df = pd.DataFrame({
                 'x': base_landmarks[:, 0],
                 'y': base_landmarks[:, 1],
@@ -129,12 +127,19 @@ class FaceWrapper:
         # Convert final image back to torch tensor
         image = torch.from_numpy(result_image).unsqueeze(0)
 
-        # Convert landmarks to dictionary format
-        landmarks_dict = {
-            'x': landmarks_df['x'].tolist(),
-            'y': landmarks_df['y'].tolist(),
-            'z': landmarks_df['z'].tolist(),
-            'indices': landmarks_df['index'].tolist()
+        # Create landmarks dictionary
+        landmarks = {
+            'detected_lm': {
+                'x': landmarks_df['x'].tolist(),
+                'y': landmarks_df['y'].tolist(),
+                'indices': landmarks_df['index'].tolist()
+            },
+            'target_lm': {
+                'x': base_landmarks[:, 0].tolist(),
+                'y': base_landmarks[:, 1].tolist(),
+                'indices': list(range(len(base_landmarks)))
+            }
         }
 
-        return (image, landmarks_dict)
+        return (image, landmarks)
+

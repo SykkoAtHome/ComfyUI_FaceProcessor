@@ -32,13 +32,13 @@ class FaceFitAndRestore:
                 }),
             },
             "optional": {
-                "face_settings": ("FACE_SETTINGS", {
+                "face_settings": ("DICT", {
                     "default": None
                 }),
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "FACE_SETTINGS", "MASK")
+    RETURN_TYPES = ("IMAGE", "DICT", "MASK")
     RETURN_NAMES = ("image", "face_settings", "mask")
     FUNCTION = "process_image"
     CATEGORY = "Face Processor"
