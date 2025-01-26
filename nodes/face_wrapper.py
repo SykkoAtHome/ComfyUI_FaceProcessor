@@ -33,158 +33,46 @@ class FaceWrapper:
                 "y_transform": ("FLOAT", {"default": 0.0, "min": -0.5, "max": 0.5, "step": 0.01})
             },
             "optional": {
-                "processor_settings": ("DICT", {"default": None})
+                "processor_settings": ("DICT", {"default": None}),
+                "mask": ("MASK", {"default": None})
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "DICT")
-    RETURN_NAMES = ("image", "processor_settings")
+    RETURN_TYPES = ("IMAGE", "DICT", "MASK")
+    RETURN_NAMES = ("image", "processor_settings", "mask")
     FUNCTION = "detect_face"
     CATEGORY = "Face Processor"
 
     def detect_face(self, image, mode, device, show_detection, show_target, landmark_size,
-                    show_labels, x_scale, y_transform, processor_settings=None):
+                    show_labels, x_scale, y_transform, processor_settings=None, mask=None):
         # Convert input image to numpy with proper RGB format
         image_np = self._convert_to_numpy(image)
         height, width = image_np.shape[:2]
 
+        # Convert mask if provided
+        mask_np = None
+        if mask is not None:
+            mask_np = self._convert_mask_to_numpy(mask)
+
         if mode == "Wrap":
             return self._wrap_mode(image_np, None, width, height,
-                                   device, x_scale, y_transform, processor_settings)
+                                 device, x_scale, y_transform, processor_settings, mask_np)
 
         # Detect facial landmarks
         landmarks_df = self.face_detector.detect_landmarks(image_np)
         if landmarks_df is None:
             print("No face detected")
-            return (image, processor_settings or {})
+            empty_mask = torch.zeros((1, height, width), dtype=torch.float32) if mask is not None else None
+            return (image, processor_settings or {}, empty_mask)
 
         # Handle different modes
         if mode == "Debug":
             return self._debug_mode(image_np, landmarks_df, width, height,
-                                    show_detection, show_target, landmark_size,
-                                    show_labels, x_scale, y_transform, processor_settings)
+                                  show_detection, show_target, landmark_size,
+                                  show_labels, x_scale, y_transform, processor_settings, mask_np)
         elif mode == "Un-Wrap":
             return self._unwrap_mode(image_np, landmarks_df, width, height,
-                                     device, x_scale, y_transform, processor_settings)
-
-    def _debug_mode(self, image_np, landmarks_df, width, height, show_detection,
-                    show_target, landmark_size, show_labels, x_scale, y_transform,
-                    processor_settings):
-        result_image = image_np.astype(np.float32) / 255.0
-        overlays = []
-
-        # Show detection landmarks
-        if show_detection:
-            det_overlay = ImageProcessor.draw_landmarks(
-                (width, height), landmarks_df,
-                transparency=0.4, color=(0, 255, 0),
-                radius=landmark_size, label=show_labels
-            )
-            if det_overlay is not None:
-                overlays.append(det_overlay)
-
-        # Generate and show target landmarks
-        base_landmarks = MediapipeBaseLandmarks.get_base_landmarks(
-            (width, height), x_scale=x_scale, y_translation=y_transform
-        )
-
-        if show_target:
-            base_df = pd.DataFrame({
-                'x': base_landmarks[:, 0],
-                'y': base_landmarks[:, 1],
-                'z': np.zeros(len(base_landmarks)),
-                'index': range(len(base_landmarks))
-            })
-            target_overlay = ImageProcessor.draw_landmarks(
-                (width, height), base_df,
-                transparency=0.4, color=(255, 0, 0),
-                radius=landmark_size, label=show_labels
-            )
-            if target_overlay is not None:
-                overlays.append(target_overlay)
-
-        # Apply overlays
-        for overlay in overlays:
-            overlay = overlay.astype(np.float32) / 255.0
-            alpha = overlay[:, :, 3:]
-            rgb = overlay[:, :, :3]
-            result_image = result_image * (1 - alpha) + rgb * alpha
-
-        # Prepare output
-        output_image = torch.from_numpy(result_image).unsqueeze(0)
-        landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
-
-        return (output_image, self._update_settings(processor_settings, landmarks_data))
-
-    def _unwrap_mode(self, image_np, landmarks_df, width, height, device,
-                     x_scale, y_transform, processor_settings):
-        # Get base landmarks (468 points)
-        base_landmarks = MediapipeBaseLandmarks.get_base_landmarks(
-            (width, height), x_scale=x_scale, y_translation=y_transform
-        )
-
-        # Prepare source landmarks - take only first 468 points to match base_landmarks
-        source_landmarks = landmarks_df.iloc[:468][['x', 'y']].values.astype(np.float32)
-
-        # Select warping method based on device
-        pil_image = Image.fromarray(image_np)
-        if device == "CUDA" and torch.cuda.is_available():
-            warped_image = GPUDeformer.warp_face(
-                pil_image,
-                source_landmarks,
-                base_landmarks
-            )
-        else:
-            warped_image = CPUDeformer.warp_face(
-                pil_image,
-                source_landmarks,
-                base_landmarks
-            )
-
-        # Convert result to tensor
-        output_image = np.array(warped_image).astype(np.float32) / 255.0
-        output_image = torch.from_numpy(output_image).unsqueeze(0)
-
-        # Update processor settings
-        landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
-        return (output_image, self._update_settings(processor_settings, landmarks_data))
-
-    def _wrap_mode(self, image_np, landmarks_df, width, height, device,
-                   x_scale, y_transform, processor_settings):
-        if not processor_settings or 'target_lm' not in processor_settings:
-            print("No landmarks found in processor settings")
-            output_image = torch.from_numpy(image_np.astype(np.float32) / 255.0).unsqueeze(0)
-            return (output_image, {})
-
-        # Source landmarks from stored base landmarks (target_lm in settings)
-        source_x = processor_settings['target_lm']['x']
-        source_y = processor_settings['target_lm']['y']
-        source_landmarks = np.column_stack((source_x, source_y))[:468]
-
-        # Target landmarks from detected face (detected_lm in settings)
-        detected_x = processor_settings['detected_lm']['x']
-        detected_y = processor_settings['detected_lm']['y']
-        target_landmarks = np.column_stack((detected_x, detected_y))[:468]
-
-        # Select warping method
-        pil_image = Image.fromarray(image_np)
-        if device == "CUDA" and torch.cuda.is_available():
-            warped_image = GPUDeformer.warp_face(
-                pil_image,
-                source_landmarks,
-                target_landmarks
-            )
-        else:
-            warped_image = CPUDeformer.warp_face(
-                pil_image,
-                source_landmarks,
-                target_landmarks
-            )
-
-        output_image = np.array(warped_image).astype(np.float32) / 255.0
-        output_image = torch.from_numpy(output_image).unsqueeze(0)
-
-        return (output_image, processor_settings)
+                                   device, x_scale, y_transform, processor_settings, mask_np)
 
     def _convert_to_numpy(self, image):
         """Improved image conversion with channel handling"""
@@ -213,6 +101,132 @@ class FaceWrapper:
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
         return image
+
+    def _convert_mask_to_numpy(self, mask):
+        """Convert mask tensor to numpy array"""
+        if torch.is_tensor(mask):
+            mask = mask.detach().cpu().numpy()
+            if len(mask.shape) == 3:
+                mask = mask[0]  # Remove batch dimension
+            # Scale to 0-255 range
+            mask = (mask * 255).astype(np.uint8)
+        return mask
+
+    def _convert_mask_to_tensor(self, mask_np):
+        """Convert numpy mask back to tensor format"""
+        if mask_np is not None:
+            mask = mask_np.astype(np.float32) / 255.0
+            return torch.from_numpy(mask).unsqueeze(0)
+        return None
+
+    def _debug_mode(self, image_np, landmarks_df, width, height, show_detection,
+                    show_target, landmark_size, show_labels, x_scale, y_transform,
+                    processor_settings, mask_np):
+        result_image = image_np.astype(np.float32) / 255.0
+        overlays = []
+
+        if show_detection:
+            det_overlay = ImageProcessor.draw_landmarks(
+                (width, height), landmarks_df,
+                transparency=0.4, color=(0, 255, 0),
+                radius=landmark_size, label=show_labels
+            )
+            if det_overlay is not None:
+                overlays.append(det_overlay)
+
+        base_landmarks = MediapipeBaseLandmarks.get_base_landmarks(
+            (width, height), x_scale=x_scale, y_translation=y_transform
+        )
+
+        if show_target:
+            base_df = pd.DataFrame({
+                'x': base_landmarks[:, 0],
+                'y': base_landmarks[:, 1],
+                'z': np.zeros(len(base_landmarks)),
+                'index': range(len(base_landmarks))
+            })
+            target_overlay = ImageProcessor.draw_landmarks(
+                (width, height), base_df,
+                transparency=0.4, color=(255, 0, 0),
+                radius=landmark_size, label=show_labels
+            )
+            if target_overlay is not None:
+                overlays.append(target_overlay)
+
+        for overlay in overlays:
+            overlay = overlay.astype(np.float32) / 255.0
+            alpha = overlay[:, :, 3:]
+            rgb = overlay[:, :, :3]
+            result_image = result_image * (1 - alpha) + rgb * alpha
+
+        output_image = torch.from_numpy(result_image).unsqueeze(0)
+        output_mask = self._convert_mask_to_tensor(mask_np)
+        landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
+
+        return (output_image, self._update_settings(processor_settings, landmarks_data), output_mask)
+
+    def _unwrap_mode(self, image_np, landmarks_df, width, height, device,
+                     x_scale, y_transform, processor_settings, mask_np):
+        base_landmarks = MediapipeBaseLandmarks.get_base_landmarks(
+            (width, height), x_scale=x_scale, y_translation=y_transform
+        )
+        source_landmarks = landmarks_df.iloc[:468][['x', 'y']].values.astype(np.float32)
+
+        # Process image
+        pil_image = Image.fromarray(image_np)
+        warped_image = self._apply_warping(pil_image, source_landmarks, base_landmarks, device)
+
+        # Process mask if provided
+        warped_mask = None
+        if mask_np is not None:
+            pil_mask = Image.fromarray(mask_np)
+            warped_mask = self._apply_warping(pil_mask, source_landmarks, base_landmarks, device)
+            warped_mask = self._convert_mask_to_tensor(np.array(warped_mask))
+
+        output_image = np.array(warped_image).astype(np.float32) / 255.0
+        output_image = torch.from_numpy(output_image).unsqueeze(0)
+
+        landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
+        return (output_image, self._update_settings(processor_settings, landmarks_data), warped_mask)
+
+    def _wrap_mode(self, image_np, landmarks_df, width, height, device,
+                   x_scale, y_transform, processor_settings, mask_np):
+        if not processor_settings or 'target_lm' not in processor_settings:
+            print("No landmarks found in processor settings")
+            output_image = torch.from_numpy(image_np.astype(np.float32) / 255.0).unsqueeze(0)
+            output_mask = self._convert_mask_to_tensor(mask_np)
+            return (output_image, {}, output_mask)
+
+        source_x = processor_settings['target_lm']['x']
+        source_y = processor_settings['target_lm']['y']
+        source_landmarks = np.column_stack((source_x, source_y))[:468]
+
+        detected_x = processor_settings['detected_lm']['x']
+        detected_y = processor_settings['detected_lm']['y']
+        target_landmarks = np.column_stack((detected_x, detected_y))[:468]
+
+        # Process image
+        pil_image = Image.fromarray(image_np)
+        warped_image = self._apply_warping(pil_image, source_landmarks, target_landmarks, device)
+
+        # Process mask if provided
+        warped_mask = None
+        if mask_np is not None:
+            pil_mask = Image.fromarray(mask_np)
+            warped_mask = self._apply_warping(pil_mask, source_landmarks, target_landmarks, device)
+            warped_mask = self._convert_mask_to_tensor(np.array(warped_mask))
+
+        output_image = np.array(warped_image).astype(np.float32) / 255.0
+        output_image = torch.from_numpy(output_image).unsqueeze(0)
+
+        return (output_image, processor_settings, warped_mask)
+
+    def _apply_warping(self, image, source_landmarks, target_landmarks, device):
+        """Apply warping to image using selected device"""
+        if device == "CUDA" and torch.cuda.is_available():
+            return GPUDeformer.warp_face(image, source_landmarks, target_landmarks)
+        else:
+            return CPUDeformer.warp_face(image, source_landmarks, target_landmarks)
 
     def _prepare_landmarks_data(self, detected_df, target_lm):
         return {
