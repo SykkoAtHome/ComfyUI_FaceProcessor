@@ -57,7 +57,7 @@ def generate_context_file(
 
 # Example usage
 if __name__ == "__main__":
-    output_file = "D:/code/code_base/face_processor_04.txt"
+    output_file = "D:/code/code_base/face_processor_05.txt"
     generate_context_file(
         root_dir="E:/ComfyUI-DEV/custom_nodes/ComfyUI_FaceProcessor",
         output_file=output_file,

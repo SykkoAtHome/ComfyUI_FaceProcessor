@@ -227,11 +227,11 @@ class ImageProcessor:
                 if label:
                     # Text parameters
                     font = cv2.FONT_HERSHEY_SIMPLEX
-                    font_scale = 0.3
+                    font_scale = 0.4
                     text_thickness = 1
 
                     # Add small offset to text position
-                    text_x = x + radius + 2
+                    text_x = x + radius + 5
                     text_y = y + radius
 
                     # Draw text with white color and black outline for better visibility

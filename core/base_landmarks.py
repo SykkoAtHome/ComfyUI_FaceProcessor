@@ -20,25 +20,22 @@ class MediapipeBaseLandmarks:
     @classmethod
     def _transform_landmarks(cls, landmarks, x_scale=1.0, y_translation=0.0):
         """
-        Apply transformations to landmarks:
-        - x_scale: horizontal scaling (0.5 to 1.0)
+        Apply transformations to landmarks with horizontal influence scaling:
+        - x_scale: horizontal scaling (0.5 to 1.0) with horizontal distance influence
         - y_translation: vertical translation (-0.5 to 0.5)
-
-        Args:
-            landmarks: numpy array of landmarks
-            x_scale: horizontal scaling factor (default: 1.0)
-            y_translation: vertical translation value (default: 0.0)
-
-        Returns:
-            numpy array: Transformed landmarks
         """
         transformed = landmarks.copy()
 
-        # Calculate center point for scaling
+        # Calculate center point
         center_x = (landmarks[:, 0].min() + landmarks[:, 0].max()) / 2
 
-        # Apply horizontal scaling relative to center
-        transformed[:, 0] = center_x + (transformed[:, 0] - center_x) * x_scale
+        # Calculate horizontal distance from center (normalized to 0-1)
+        dx = np.abs(transformed[:, 0] - center_x)
+        influence = np.clip(dx / center_x, 0, 1)  # 0 w środku, 1 na krawędziach
+
+        # Calculate scaled positions with horizontal influence
+        scale_factor = 1.0 + (x_scale - 1.0) * influence
+        transformed[:, 0] = center_x + (transformed[:, 0] - center_x) * scale_factor
 
         # Apply vertical translation
         transformed[:, 1] += y_translation
