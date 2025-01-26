@@ -168,3 +168,97 @@ class ImageProcessor:
 
         # Return the cropped face and the crop bounding box
         return cropped_face, (x1, y1, x2 - x1, y2 - y1)
+
+    @staticmethod
+    def draw_landmarks(image_size: Union[int, Tuple[int, int]],
+                       landmarks_df: pd.DataFrame,
+                       transparency: float = 0.5,
+                       color: Tuple[int, int, int] = (0, 255, 0),
+                       radius: int = 2,
+                       label: bool = False) -> Union[np.ndarray, None]:
+        """
+        Draw facial landmarks on a transparent image.
+
+        Args:
+            image_size: Target image size (int or tuple of width, height)
+            landmarks_df: DataFrame containing landmark coordinates
+            transparency: Alpha channel value (0.0-1.0)
+            color: RGB color tuple for landmarks
+            radius: Radius of landmark points
+            label: Whether to show landmark IDs
+
+        Returns:
+            numpy array: RGBA image with drawn landmarks
+        """
+        if landmarks_df is None or landmarks_df.empty:
+            return None
+
+        # Create transparent image
+        if isinstance(image_size, tuple):
+            width, height = image_size
+        else:
+            width = height = image_size
+
+        # Create RGBA image (alpha channel for transparency)
+        image = np.zeros((height, width, 4), dtype=np.uint8)
+
+        # Set alpha channel based on transparency
+        alpha = int(transparency * 255)
+
+        # Draw landmarks
+        for _, landmark in landmarks_df.iterrows():
+            x = int(landmark['x'])
+            y = int(landmark['y'])
+            index = int(landmark['index'])
+
+            # Ensure coordinates are within image bounds
+            if 0 <= x < width and 0 <= y < height:
+                # Draw filled circle
+                cv2.circle(
+                    image,
+                    (x, y),
+                    radius,
+                    (*color, alpha),
+                    -1,  # Filled circle
+                    cv2.LINE_AA
+                )
+
+                # Add landmark ID if requested
+                if label:
+                    # Text parameters
+                    font = cv2.FONT_HERSHEY_SIMPLEX
+                    font_scale = 0.3
+                    text_thickness = 1
+
+                    # Add small offset to text position
+                    text_x = x + radius + 2
+                    text_y = y + radius
+
+                    # Draw text with white color and black outline for better visibility
+                    text = str(index)
+
+                    # Draw text outline
+                    cv2.putText(
+                        image,
+                        text,
+                        (text_x, text_y),
+                        font,
+                        font_scale,
+                        (0, 0, 0, alpha),  # Black outline
+                        text_thickness + 1,
+                        cv2.LINE_AA
+                    )
+
+                    # Draw text
+                    cv2.putText(
+                        image,
+                        text,
+                        (text_x, text_y),
+                        font,
+                        font_scale,
+                        (*color, alpha),  # Main color
+                        text_thickness,
+                        cv2.LINE_AA
+                    )
+
+        return image
