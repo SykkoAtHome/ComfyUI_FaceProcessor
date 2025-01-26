@@ -56,8 +56,7 @@ class MediapipeBaseLandmarks:
             return cls._base_landmarks, cls._faces
 
         current_dir = os.path.dirname(os.path.realpath(__file__))
-        project_root = os.path.dirname(current_dir)
-        obj_path = os.path.join(project_root, 'models', 'uv_maps', 'mediapipe_landmarks_468.obj')
+        obj_path = os.path.join(current_dir, 'mediapipe_landmarks_468.obj')
 
         vertices = []
         uvs = []
