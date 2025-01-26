@@ -20,7 +20,7 @@ A custom node collection for ComfyUI that provides advanced face detection, alig
 1. Clone this repository into your ComfyUI's `custom_nodes` directory:
 ```bash
 cd ComfyUI/custom_nodes
-git clone [repository-url] face_processor
+git clone https://github.com/SykkoAtHome/ComfyUI_FaceProcessor.git face_processor
 ```
 
 2. Install required dependencies:
@@ -32,7 +32,7 @@ For CUDA acceleration:
 1. Install [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
 2. Install [CuPy](https://docs.cupy.dev/en/stable/install.html):
 ```bash
-pip install cupy-cuda11x  # Replace with your CUDA version
+pip install cupy-cuda12x  # Replace with your CUDA version
 ```
 
 ## Nodes
@@ -150,7 +150,15 @@ final_image, _ = face_wrapper.detect_face(
 
 ## License
 
-[Your License Here]
+MIT License
+
+Copyright (c) 2024
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## Acknowledgments
 
