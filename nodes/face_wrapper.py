@@ -45,19 +45,23 @@ class FaceWrapper:
                     "max": 0.5,
                     "step": 0.05
                 })
+            },
+            "optional": {
+                "processor_settings": ("DICT", {
+                    "default": None
+                })
             }
         }
 
     RETURN_TYPES = ("IMAGE", "DICT")
-    RETURN_NAMES = ("image", "landmarks")
+    RETURN_NAMES = ("image", "processor_settings")
     FUNCTION = "detect_face"
     CATEGORY = "Face Processor"
 
     def detect_face(self, image, show_detection, show_target, landmark_size=2,
-                    show_labels=False, x_scale=1.0, y_transform=0.0):
+                    show_labels=False, x_scale=1.0, y_transform=0.0, processor_settings=None):
         """Detect facial landmarks and optionally visualize them."""
 
-        # Convert tensor to numpy for detection
         if torch.is_tensor(image):
             image_np = image.detach().cpu().numpy()
             if len(image_np.shape) == 4:
@@ -66,18 +70,15 @@ class FaceWrapper:
 
         height, width = image_np.shape[:2]
 
-        # Detect landmarks
         landmarks_df = self.face_detector.detect_landmarks(image_np)
 
         if landmarks_df is None:
             print("No face detected in the image")
             return (image, {})
 
-        # Start with original image
         result_image = image_np.astype(np.float32) / 255.0
         overlays = []
 
-        # Create detected landmarks overlay if requested
         if show_detection:
             landmark_overlay = ImageProcessor.draw_landmarks(
                 (width, height),
@@ -90,14 +91,12 @@ class FaceWrapper:
             if landmark_overlay is not None:
                 overlays.append(landmark_overlay)
 
-        # Get base landmarks with transformations
         base_landmarks = MediapipeBaseLandmarks.get_base_landmarks(
             (width, height),
             x_scale=x_scale,
             y_translation=y_transform
         )
 
-        # Create target landmarks overlay if requested
         if show_target:
             base_df = pd.DataFrame({
                 'x': base_landmarks[:, 0],
@@ -117,18 +116,15 @@ class FaceWrapper:
             if target_overlay is not None:
                 overlays.append(target_overlay)
 
-        # Blend all overlays with the image
         for overlay in overlays:
             overlay = overlay.astype(np.float32) / 255.0
             alpha = overlay[:, :, 3:]
             rgb = overlay[:, :, :3]
             result_image = result_image * (1 - alpha) + rgb * alpha
 
-        # Convert final image back to torch tensor
         image = torch.from_numpy(result_image).unsqueeze(0)
 
-        # Create landmarks dictionary
-        landmarks = {
+        landmarks_data = {
             'detected_lm': {
                 'x': landmarks_df['x'].tolist(),
                 'y': landmarks_df['y'].tolist(),
@@ -141,5 +137,9 @@ class FaceWrapper:
             }
         }
 
-        return (image, landmarks)
-
+        if processor_settings is not None:
+            updated_settings = processor_settings.copy()
+            updated_settings.update(landmarks_data)
+            return (image, updated_settings)
+        else:
+            return (image, landmarks_data)

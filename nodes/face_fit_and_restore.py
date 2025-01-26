@@ -32,25 +32,25 @@ class FaceFitAndRestore:
                 }),
             },
             "optional": {
-                "face_settings": ("DICT", {
+                "processor_settings": ("DICT", {
                     "default": None
                 }),
             }
         }
 
     RETURN_TYPES = ("IMAGE", "DICT", "MASK")
-    RETURN_NAMES = ("image", "face_settings", "mask")
+    RETURN_NAMES = ("image", "processor_settings", "mask")
     FUNCTION = "process_image"
     CATEGORY = "Face Processor"
 
-    def process_image(self, mode, image, padding_percent=0.0, bbox_size="1024", face_settings=None):
+    def process_image(self, mode, image, padding_percent=0.0, bbox_size="1024", processor_settings=None):
         if mode == "Fit":
             return self._fit(image, padding_percent, bbox_size)
         elif mode == "Restore":
-            if face_settings is None:
-                print("Face settings are required in Restore mode, returning original image")
+            if processor_settings is None:
+                print("Processor settings are required in Restore mode, returning original image")
                 return (image, {}, self._create_empty_mask(image))
-            return self._restore(image, face_settings)
+            return self._restore(image, processor_settings)
         else:
             print(f"Invalid mode: {mode}, returning original image")
             return (image, {}, self._create_empty_mask(image))
@@ -92,8 +92,8 @@ class FaceFitAndRestore:
         final_image = final_image.astype(np.float32) / 255.0
         final_image = torch.from_numpy(final_image).unsqueeze(0)
 
-        # Save face settings for restoration
-        face_settings = {
+        # Save processor settings for restoration
+        processor_settings = {
             "original_image_shape": image_np.shape,
             "rotation_angle": rotation_angle,
             "crop_bbox": crop_bbox,  # (x, y, w, h)
@@ -101,76 +101,56 @@ class FaceFitAndRestore:
             "bbox_size": target_size,
         }
 
-        # Create a mask for the face area (1:1)
-        # Initialize mask with ones (all pixels are part of the face)
+        # Create a mask for the face area
         mask = np.ones((target_size, target_size), dtype=np.float32)
 
-        # If there was a rotation, exclude areas that are outside the original image
         if rotation_angle != 0:
-            # Create a blank image with the original size
             original_mask = np.ones(image_np.shape[:2], dtype=np.float32)
-
-            # Rotate the original mask to match the rotated image
             height, width = image_np.shape[:2]
             center = (width // 2, height // 2)
             rotation_matrix = cv2.getRotationMatrix2D(center, rotation_angle, 1.0)
             rotated_mask = cv2.warpAffine(original_mask, rotation_matrix, (width, height), flags=cv2.INTER_LINEAR)
 
-            # Crop the rotated mask to the face region
             x1, y1, w, h = crop_bbox
             cropped_mask = rotated_mask[y1:y1 + h, x1:x1 + w]
-
-            # Resize the cropped mask to the target size
             resized_mask = cv2.resize(cropped_mask, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
-
-            # Update the final mask to exclude areas outside the original image
             mask = resized_mask
 
-        # Convert mask to torch tensor
         mask = torch.from_numpy(mask).unsqueeze(0)
+        return (final_image, processor_settings, mask)
 
-        return (final_image, face_settings, mask)
-
-    def _restore(self, image, face_settings):
+    def _restore(self, image, processor_settings):
         """Restore mode: Restore the face to the original image."""
-        # Convert tensor to numpy
         processed_face_np = self._convert_to_numpy(image)
         if processed_face_np is None:
             return (image, {}, self._create_empty_mask(image))
 
-        # Extract face settings
-        original_image_shape = face_settings.get("original_image_shape")
-        rotation_angle = face_settings.get("rotation_angle")
-        crop_bbox = face_settings.get("crop_bbox")
-        padding_percent = face_settings.get("padding_percent")
-        bbox_size = face_settings.get("bbox_size")
+        original_image_shape = processor_settings.get("original_image_shape")
+        rotation_angle = processor_settings.get("rotation_angle")
+        crop_bbox = processor_settings.get("crop_bbox")
+        padding_percent = processor_settings.get("padding_percent")
+        bbox_size = processor_settings.get("bbox_size")
 
         if not all([original_image_shape, crop_bbox]):
-            print("Invalid face settings, returning processed face")
+            print("Invalid processor settings, returning processed face")
             return (image, {}, self._create_empty_mask(image))
 
-        # Create a blank image with the original size
         restored_image = np.zeros(original_image_shape, dtype=np.uint8)
 
-        # Resize the processed face back to the original crop size
         x1, y1, w, h = crop_bbox
         resized_face = cv2.resize(processed_face_np, (w, h), interpolation=cv2.INTER_LANCZOS4)
 
-        # Place the resized face back into the rotated image
         restored_image[y1:y1 + h, x1:x1 + w] = resized_face
 
-        # Rotate the image back to the original orientation (reverse the rotation)
         if rotation_angle != 0:
             height, width = original_image_shape[:2]
             center = (width // 2, height // 2)
-            rotation_matrix = cv2.getRotationMatrix2D(center, -rotation_angle, 1.0)  # Reverse the rotation
+            rotation_matrix = cv2.getRotationMatrix2D(center, -rotation_angle, 1.0)
             restored_image = cv2.warpAffine(restored_image, rotation_matrix, (width, height), flags=cv2.INTER_LANCZOS4)
 
-        # Convert back to float32 format expected by ComfyUI
         restored_image = restored_image.astype(np.float32) / 255.0
         restored_image = torch.from_numpy(restored_image).unsqueeze(0)
 
-        # Create a mask for the face area (original image size)
         mask = self._create_mask(original_image_shape, crop_bbox, rotation_angle)
 
         return (restored_image, {}, mask)
