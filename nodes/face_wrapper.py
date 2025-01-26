@@ -48,6 +48,10 @@ class FaceWrapper:
         image_np = self._convert_to_numpy(image)
         height, width = image_np.shape[:2]
 
+        if mode == "Wrap":
+            return self._wrap_mode(image_np, None, width, height,
+                                   device, x_scale, y_transform, processor_settings)
+
         # Detect facial landmarks
         landmarks_df = self.face_detector.detect_landmarks(image_np)
         if landmarks_df is None:
@@ -59,14 +63,9 @@ class FaceWrapper:
             return self._debug_mode(image_np, landmarks_df, width, height,
                                     show_detection, show_target, landmark_size,
                                     show_labels, x_scale, y_transform, processor_settings)
-
         elif mode == "Un-Wrap":
             return self._unwrap_mode(image_np, landmarks_df, width, height,
                                      device, x_scale, y_transform, processor_settings)
-
-        elif mode == "Wrap":
-            print("Wrap mode not implemented yet")
-            return (image, processor_settings or {})
 
     def _debug_mode(self, image_np, landmarks_df, width, height, show_detection,
                     show_target, landmark_size, show_labels, x_scale, y_transform,
@@ -133,8 +132,7 @@ class FaceWrapper:
             warped_image = GPUDeformer.warp_face(
                 pil_image,
                 source_landmarks,
-                base_landmarks,
-                device='cuda'
+                base_landmarks
             )
         else:
             warped_image = CPUDeformer.warp_face(
@@ -150,6 +148,43 @@ class FaceWrapper:
         # Update processor settings
         landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
         return (output_image, self._update_settings(processor_settings, landmarks_data))
+
+    def _wrap_mode(self, image_np, landmarks_df, width, height, device,
+                   x_scale, y_transform, processor_settings):
+        if not processor_settings or 'target_lm' not in processor_settings:
+            print("No landmarks found in processor settings")
+            output_image = torch.from_numpy(image_np.astype(np.float32) / 255.0).unsqueeze(0)
+            return (output_image, {})
+
+        # Source landmarks from stored base landmarks (target_lm in settings)
+        source_x = processor_settings['target_lm']['x']
+        source_y = processor_settings['target_lm']['y']
+        source_landmarks = np.column_stack((source_x, source_y))[:468]
+
+        # Target landmarks from detected face (detected_lm in settings)
+        detected_x = processor_settings['detected_lm']['x']
+        detected_y = processor_settings['detected_lm']['y']
+        target_landmarks = np.column_stack((detected_x, detected_y))[:468]
+
+        # Select warping method
+        pil_image = Image.fromarray(image_np)
+        if device == "CUDA" and torch.cuda.is_available():
+            warped_image = GPUDeformer.warp_face(
+                pil_image,
+                source_landmarks,
+                target_landmarks
+            )
+        else:
+            warped_image = CPUDeformer.warp_face(
+                pil_image,
+                source_landmarks,
+                target_landmarks
+            )
+
+        output_image = np.array(warped_image).astype(np.float32) / 255.0
+        output_image = torch.from_numpy(output_image).unsqueeze(0)
+
+        return (output_image, processor_settings)
 
     def _convert_to_numpy(self, image):
         """Improved image conversion with channel handling"""

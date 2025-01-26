@@ -19,7 +19,7 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "FaceFitAndRestore": "Face Fit or Restore",
-    "FaceWrapper": "Face Landmarks Detector"
+    "FaceWrapper": "Face Wrapper"
 }
 
 __version__ = "1.0.1"
