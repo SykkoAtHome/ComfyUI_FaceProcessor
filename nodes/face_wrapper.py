@@ -6,7 +6,7 @@ import cv2
 
 from ..core.face_detector import FaceDetector
 from ..core.image_processor import ImageProcessor
-from ..core.base_landmarks import MediapipeBaseLandmarks
+from ..core.base_mesh import MediapipeBaseLandmarks
 from ..core.cpu_deformer import CPUDeformer
 from ..core.gpu_deformer import GPUDeformer
 

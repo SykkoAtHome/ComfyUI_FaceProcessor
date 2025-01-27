@@ -31,7 +31,7 @@ class MediapipeBaseLandmarks:
 
         # Calculate horizontal distance from center (normalized to 0-1)
         dx = np.abs(transformed[:, 0] - center_x)
-        influence = np.clip(dx / center_x, 0, 1)  # 0 w środku, 1 na krawędziach
+        influence = np.clip(dx / center_x, 0, 1)
 
         # Calculate scaled positions with horizontal influence
         scale_factor = 1.0 + (x_scale - 1.0) * influence
