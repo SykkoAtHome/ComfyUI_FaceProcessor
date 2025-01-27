@@ -4,6 +4,8 @@ import cv2
 
 from torch import Tensor
 
+from core.image_processor import ImageProcessor
+
 
 class HighPassFilter:
     """ComfyUI node implementing AE-style high-pass filter with dynamic histogram visualization"""
@@ -27,43 +29,6 @@ class HighPassFilter:
     RETURN_NAMES = ("image",)
     FUNCTION = "apply_effect"
     CATEGORY = "Face Processor/Tools"
-
-    def draw_dynamic_histogram(self, composite: np.ndarray,
-                               input_black: int, input_white: int,
-                               gamma: float) -> np.ndarray:
-        """Creates histogram visualization with dynamic control lines"""
-        # Convert to grayscale for histogram calculation
-        gray = cv2.cvtColor(composite, cv2.COLOR_RGB2GRAY) if len(composite.shape) == 3 else composite
-
-        # Calculate histogram
-        hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
-        hist_img = np.zeros((200, 256, 3), dtype=np.uint8)
-        cv2.normalize(hist, hist, 0, hist_img.shape[0], cv2.NORM_MINMAX)
-
-        # Draw histogram baseline
-        for i in range(1, 256):
-            cv2.line(hist_img,
-                     (i - 1, 200 - int(hist[i - 1])),
-                     (i, 200 - int(hist[i])),
-                     (128, 128, 128), 1)
-
-        # Calculate gamma position
-        gamma_pos = int(255 * (0.5 ** (1 / gamma)))
-
-        # Draw control lines
-        cv2.line(hist_img, (input_black, 0), (input_black, 200), (255, 0, 0), 2)  # Blue - black level
-        cv2.line(hist_img, (input_white, 0), (input_white, 200), (0, 255, 0), 2)  # Green - white level
-        cv2.line(hist_img, (gamma_pos, 0), (gamma_pos, 200), (255, 255, 255), 2)  # White - gamma
-
-        # Add legend
-        cv2.putText(hist_img, f"Black: {input_black}", (10, 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-        cv2.putText(hist_img, f"White: {input_white}", (10, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        cv2.putText(hist_img, f"Gamma: {gamma:.2f}", (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-
-        return hist_img
 
     def apply_effect(self, image: torch.Tensor, blur_radius: int, blur_iterations: int,
                      blend_opacity: float, input_black: int, input_white: int,
@@ -95,7 +60,7 @@ class HighPassFilter:
 
         # Add histogram visualization if enabled
         if show_histogram:
-            hist_img = self.draw_dynamic_histogram(composite, in_black, in_white, gamma)
+            hist_img = ImageProcessor.draw_dynamic_histogram(composite, in_black, in_white, gamma)
             target_width = result.shape[1]
             hist_img = cv2.resize(hist_img, (target_width, 200))
             result = np.vstack([result, hist_img])
