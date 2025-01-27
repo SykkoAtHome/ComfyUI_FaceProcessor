@@ -27,13 +27,13 @@ class HighPassFilter:
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
-    FUNCTION = "apply_effect"
+    FUNCTION = "apply_hpf"
     CATEGORY = "Face Processor/Tools"
 
-    def apply_effect(self, image: torch.Tensor, blur_radius: int, blur_iterations: int,
-                     blend_opacity: float, input_black: int, input_white: int,
-                     gamma: float, show_histogram: bool) -> tuple[Tensor]:
-        """Main processing function implementing the AE-style effect workflow"""
+    def apply_hpf(self, image: torch.Tensor, blur_radius: int, blur_iterations: int,
+                  blend_opacity: float, input_black: int, input_white: int,
+                  gamma: float, show_histogram: bool) -> tuple[Tensor]:
+        """Main processing function implementing the High Pass Filter"""
         # Convert tensor to numpy array
         np_img = image[0].numpy() * 255
         np_img = np.clip(np_img, 0, 255).astype(np.uint8)
