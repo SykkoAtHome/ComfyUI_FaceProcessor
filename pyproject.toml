@@ -1,0 +1,14 @@
+[project]
+name = "faceprocessor"
+description = "A custom node collection for ComfyUI that provides advanced face detection, alignment, and transformation capabilities using MediaPipe Face Mesh."
+version = "1.0.0"
+license = {file = "LICENSE"}
+
+[project.urls]
+Repository = "https://github.com/SykkoAtHome/ComfyUI_FaceProcessor"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI_FaceProcessor"
+Icon = ""
