@@ -38,8 +38,8 @@ class FaceFitAndRestore:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "DICT", "MASK")
-    RETURN_NAMES = ("image", "processor_settings", "mask")
+    RETURN_TYPES = ("IMAGE", "DICT", "MASK", "INT")
+    RETURN_NAMES = ("image", "processor_settings", "mask", "bbox_size")
     FUNCTION = "process_image"
     CATEGORY = "Face Processor"
 
@@ -60,33 +60,33 @@ class FaceFitAndRestore:
         # Convert tensor to numpy
         image_np = self._convert_to_numpy(image)
         if image_np is None:
-            return (image, {}, self._create_empty_mask(image))
+            return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
         # Detect facial landmarks
         landmarks_df = self.face_detector.detect_landmarks(image_np)
         if landmarks_df is None:
             print("No face detected, returning original image")
-            return (image, {}, self._create_empty_mask(image))
+            return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
         # Calculate rotation angle and rotate the image
         rotation_angle = self._calculate_rotation_angle(landmarks_df)
         rotated_image, updated_landmarks = self._rotate_image(image_np, landmarks_df)
         if rotated_image is None:
             print("Failed to rotate image, returning original")
-            return (image, {}, self._create_empty_mask(image))
+            return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
         # Crop face region to a square (1:1)
         cropped_face, crop_bbox = self._crop_face_to_square(rotated_image, updated_landmarks, padding_percent)
         if cropped_face is None:
             print("Failed to crop face, returning original image")
-            return (image, {}, self._create_empty_mask(image))
+            return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
         # Resize to target size
         target_size = int(bbox_size)
         final_image = self._resize_image(cropped_face, target_size)
         if final_image is None:
             print("Failed to resize image, returning original")
-            return (image, {}, self._create_empty_mask(image))
+            return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
         # Convert back to float32 format expected by ComfyUI
         final_image = final_image.astype(np.float32) / 255.0
@@ -117,7 +117,7 @@ class FaceFitAndRestore:
             mask = resized_mask
 
         mask = torch.from_numpy(mask).unsqueeze(0)
-        return (final_image, processor_settings, mask)
+        return (final_image, processor_settings, mask, int(bbox_size))
 
     def _restore(self, image, processor_settings):
         """Restore mode: Restore the face to the original image."""
