@@ -107,7 +107,7 @@ class HighPassFilter:
                 "input_black": input_black,
                 "input_white": input_white,
                 "gamma": gamma,
-                "show_histogram": show_histogram
+                "show_histogram": False
             }
         }
 
