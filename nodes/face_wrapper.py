@@ -10,7 +10,6 @@ from ..core.base_landmarks import MediapipeBaseLandmarks
 from ..core.cpu_deformer import CPUDeformer
 from ..core.gpu_deformer import GPUDeformer
 
-
 class FaceWrapper:
     """ComfyUI node for detecting facial landmarks with optional visualization and warping."""
 

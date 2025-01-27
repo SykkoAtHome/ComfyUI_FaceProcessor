@@ -18,7 +18,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "FaceFitAndRestore": "Face Fit or Restore",
+    "FaceFitAndRestore": "Face Fit and Restore",
     "FaceWrapper": "Face Wrapper"
 }
 
