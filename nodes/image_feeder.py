@@ -31,7 +31,7 @@ class ImageFeeder:
     RETURN_TYPES = ("IMAGE", "DICT")
     RETURN_NAMES = ("image", "frames_data")
     FUNCTION = "feed_images"
-    CATEGORY = "image"
+    CATEGORY = "Face Processor/Image"
 
     def _load_image(self, image_path: str) -> torch.Tensor:
         """

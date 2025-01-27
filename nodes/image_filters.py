@@ -28,7 +28,7 @@ class HighPassFilter:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "apply_hpf"
-    CATEGORY = "Face Processor/Tools"
+    CATEGORY = "Face Processor/Filters"
 
     def apply_hpf(self, image: torch.Tensor, blur_radius: int, blur_iterations: int,
                   blend_opacity: float, input_black: int, input_white: int,
