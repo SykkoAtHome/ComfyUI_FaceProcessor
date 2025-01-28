@@ -53,7 +53,7 @@ class FaceDetector:
             print("Detect with dlib")
             dlib_landmarks = self.detect_landmarks_dlib(image)
             if dlib_landmarks is not None:
-                return self.landmarks_interpolation(mp_landmarks, dlib_landmarks, LandmarkMappings.landmarks_pairs)
+                return self.landmarks_interpolation(mp_landmarks, dlib_landmarks)
 
         return mp_landmarks
 
@@ -142,20 +142,19 @@ class FaceDetector:
             print(f"Error in dlib landmark detection: {str(e)}")
             return None
 
-    def landmarks_interpolation(self, mp_landmarks: pd.DataFrame, dlib_landmarks: pd.DataFrame,
-                                mapping: dict) -> pd.DataFrame:
+    def landmarks_interpolation(self, mp_landmarks: pd.DataFrame, dlib_landmarks: pd.DataFrame) -> pd.DataFrame:
         """
         Interpolates all MediaPipe landmarks based on dlib reference points using RBF interpolation.
 
         Args:
             mp_landmarks: DataFrame with columns [x, y, index]
             dlib_landmarks: DataFrame with columns [x, y, index]
-            mapping: Dictionary of corresponding landmark pairs between MediaPipe and dlib
 
         Returns:
             pd.DataFrame: DataFrame with interpolated landmark positions
         """
         from scipy.interpolate import RBFInterpolator
+
         # Validate input DataFrames
         required_columns = ['x', 'y', 'index']
         if not all(col in mp_landmarks.columns for col in required_columns):
@@ -167,17 +166,23 @@ class FaceDetector:
             return mp_landmarks
 
         try:
-            # Collect control points
+            # Get control points from Dlib landmarks
+            control_points_df = LandmarkMappings.get_control_points(dlib_landmarks)
+            if control_points_df is None:
+                print("Failed to generate control points, returning original landmarks")
+                return mp_landmarks
+
+            # Prepare source (MediaPipe) and destination (Dlib) points for RBF
             control_src = []  # MediaPipe points
-            control_dst = []  # Dlib points
+            control_dst = []  # Dlib-based points
 
-            for feature, pairs in mapping.items():
-                for mp_idx, dlib_idx in pairs:
-                    mp_point = mp_landmarks[mp_landmarks['index'] == mp_idx].iloc[0]
-                    dlib_point = dlib_landmarks[dlib_landmarks['index'] == dlib_idx].iloc[0]
+            for _, control_point in control_points_df.iterrows():
+                mp_idx = control_point['index']
+                mp_point = mp_landmarks[mp_landmarks['index'] == mp_idx]
 
-                    control_src.append([mp_point['x'], mp_point['y']])
-                    control_dst.append([dlib_point['x'], dlib_point['y']])
+                if not mp_point.empty:
+                    control_src.append([mp_point['x'].iloc[0], mp_point['y'].iloc[0]])
+                    control_dst.append([control_point['x'], control_point['y']])
 
             control_src = np.array(control_src)
             control_dst = np.array(control_dst)
