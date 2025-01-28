@@ -9,6 +9,9 @@ from pandas import DataFrame
 from typing import Union, Optional
 from core.lm_mapping import LandmarkMappings
 import dlib
+import insightface
+from insightface.app import FaceAnalysis
+from insightface.utils import face_align
 
 
 class FaceDetector:
@@ -28,6 +31,9 @@ class FaceDetector:
         # Dlib initialization
         self.face_detector = dlib.get_frontal_face_detector()
 
+        # Initialize InsightFace
+        self.insight_app = None  # Lazy loading for InsightFace
+
         # Get path to the model file
         current_dir = os.path.dirname(os.path.realpath(__file__))
         model_path = os.path.join(current_dir, "resources", "shape_predictor_68_face_landmarks.dat")
@@ -43,19 +49,40 @@ class FaceDetector:
 
         self.shape_predictor = dlib.shape_predictor(model_path)
 
-    def detect_landmarks(self, image: Union[torch.Tensor, np.ndarray, Image.Image],
-                         refine: bool = False) -> Union[DataFrame, None, str]:
+    def detect_landmarks(self,
+                         image: Union[torch.Tensor, np.ndarray, Image.Image],
+                         refiner: Optional[str] = None
+                         ) -> Union[DataFrame, None]:
+        """
+        Detect facial landmarks using MediaPipe with optional refinement.
+
+        Args:
+            image: Input image in various formats
+            refiner: Optional refinement method ('Dlib', 'InsightFace', or None)
+
+        Returns:
+            DataFrame with landmark coordinates (x, y) and indices or None if no face detected
+        """
+        # Always detect with MediaPipe first
         mp_landmarks = self.detect_landmarks_mp(image)
         if mp_landmarks is None:
             return None
 
-        if refine:
-            print("Detect with dlib")
-            dlib_landmarks = self.detect_landmarks_dlib(image)
-            if dlib_landmarks is not None:
-                return self.landmarks_interpolation(mp_landmarks, dlib_landmarks)
+        # Apply refinement if requested
+        if refiner is not None:
+            if refiner.lower() == 'dlib':
+                dlib_landmarks = self.detect_landmarks_dlib(image)
+                if dlib_landmarks is not None:
+                    return self.landmarks_interpolation(mp_landmarks, dlib_landmarks)
 
-        return mp_landmarks
+            if refiner.lower() == 'insightface':
+                insight_landmarks = self.detect_landmarks_insight(image)
+                if insight_landmarks is not None:
+                    return self.landmarks_interpolation(mp_landmarks, insight_landmarks)
+
+        else:
+            return mp_landmarks
+
 
     def detect_landmarks_mp(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[pd.DataFrame]:
         """
@@ -141,6 +168,49 @@ class FaceDetector:
         except Exception as e:
             print(f"Error in dlib landmark detection: {str(e)}")
             return None
+
+    def detect_landmarks_insight(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[pd.DataFrame]:
+        """
+        Detect facial landmarks using InsightFace.
+
+        Args:
+            image: Input image in various formats
+
+        Returns:
+            Optional[pd.DataFrame]: DataFrame containing landmark coordinates (x, y) and indices
+        """
+        try:
+            self._init_insightface()
+
+            # Convert image to numpy format
+            image_np = self._convert_to_numpy(image)
+            if image_np is None:
+                return None
+
+            # Detect faces
+            faces = self.insight_app.get(image_np)
+            if not faces:
+                print("No face detected by InsightFace")
+                return None
+
+            # Get landmarks from first face
+            face = faces[0]
+            landmarks = face.landmark_2d_106
+
+            # Create DataFrame
+            landmarks_data = {
+                'x': landmarks[:, 0],
+                'y': landmarks[:, 1],
+                'index': range(len(landmarks))
+            }
+
+            print(pd.DataFrame(landmarks_data).to_string())
+            return pd.DataFrame(landmarks_data)
+
+        except Exception as e:
+            print(f"Error in InsightFace landmark detection: {str(e)}")
+            return None
+
 
     def landmarks_interpolation(self, mp_landmarks: pd.DataFrame, dlib_landmarks: pd.DataFrame) -> pd.DataFrame:
         """
@@ -239,3 +309,14 @@ class FaceDetector:
         """Clean up resources."""
         if hasattr(self, 'face_mesh'):
             self.face_mesh.close()
+
+    def _init_insightface(self):
+        """Lazy initialization of InsightFace to save memory when not used"""
+        if self.insight_app is None:
+            print("Initializing InsightFace detector...")
+            self.insight_app = FaceAnalysis(
+                allowed_modules=['detection', 'landmark_2d_106'],
+                providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+            )
+            self.insight_app.prepare(ctx_id=0, det_size=(640, 640))
+            print("InsightFace initialized successfully")

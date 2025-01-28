@@ -22,4 +22,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ImageFeeder": "Image Feeder"
 }
 
-__version__ = "1.1.0"
+__version__ = "1.1.5"
