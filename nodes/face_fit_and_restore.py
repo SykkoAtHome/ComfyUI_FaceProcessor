@@ -4,7 +4,7 @@ import cv2
 import pandas as pd
 from typing import Union, Optional, Tuple
 
-from ..core.face_detector import FaceDetector
+from core.face_detector import FaceDetector
 
 
 class FaceFitAndRestore:
@@ -62,8 +62,8 @@ class FaceFitAndRestore:
         if image_np is None:
             return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
-        # Detect facial landmarks
-        landmarks_df = self.face_detector.detect_landmarks(image_np, "mediapipe")
+        # Detect facial landmarks using mediapipe
+        landmarks_df = self.face_detector.detect_landmarks_mp(image_np)
         if landmarks_df is None:
             print("No face detected, returning original image")
             return (image, {}, self._create_empty_mask(image), int(bbox_size))

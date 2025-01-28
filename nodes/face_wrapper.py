@@ -4,11 +4,11 @@ import pandas as pd
 from PIL import Image
 import cv2
 
-from ..core.face_detector import FaceDetector
-from ..core.image_processor import ImageProcessor
-from ..core.base_mesh import MediapipeBaseLandmarks
-from ..core.cpu_deformer import CPUDeformer
-from ..core.gpu_deformer import GPUDeformer
+from core.face_detector import FaceDetector
+from core.image_processor import ImageProcessor
+from core.base_mesh import MediapipeBaseLandmarks
+from core.cpu_deformer import CPUDeformer
+from core.gpu_deformer import GPUDeformer
 
 
 class FaceWrapper:
@@ -27,6 +27,7 @@ class FaceWrapper:
                 "device": (["CPU", "CUDA"], {"default": "CPU"}),
                 "show_detection": ("BOOLEAN", {"default": False}),
                 "show_target": ("BOOLEAN", {"default": False}),
+                "dlib_refine": ("BOOLEAN", {"default": False}),
                 "landmark_size": ("INT", {"default": 4, "min": 1, "max": 10, "step": 1}),
                 "show_labels": ("BOOLEAN", {"default": False}),
                 "x_scale": ("FLOAT", {"default": 1.0, "min": 0.5, "max": 1.0, "step": 0.01}),
@@ -43,7 +44,7 @@ class FaceWrapper:
     FUNCTION = "detect_face"
     CATEGORY = "Face Processor"
 
-    def detect_face(self, image, mode, device, show_detection, show_target, landmark_size,
+    def detect_face(self, image, mode, device, show_detection, show_target, dlib_refine, landmark_size,
                     show_labels, x_scale, y_transform, processor_settings=None, mask=None):
         # Convert input image to numpy with proper RGB format
         image_np = self._convert_to_numpy(image)
@@ -58,8 +59,9 @@ class FaceWrapper:
             return self._wrap_mode(image_np, None, width, height,
                                    device, x_scale, y_transform, processor_settings, mask_np)
 
-        # Detect facial landmarks
-        landmarks_df = self.face_detector.detect_landmarks(image_np, "mediapipe")
+        # Detect facial landmarks using mediapipe
+        landmarks_df = self.face_detector.detect_landmarks(image_np, refine=bool(dlib_refine))
+
         if landmarks_df is None:
             print("No face detected")
             empty_mask = torch.zeros((1, height, width), dtype=torch.float32) if mask is not None else None
