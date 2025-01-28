@@ -10,6 +10,7 @@ from ..core.base_mesh import MediapipeBaseLandmarks
 from ..core.cpu_deformer import CPUDeformer
 from ..core.gpu_deformer import GPUDeformer
 
+
 class FaceWrapper:
     """ComfyUI node for detecting facial landmarks with optional visualization and warping."""
 
@@ -55,10 +56,10 @@ class FaceWrapper:
 
         if mode == "Wrap":
             return self._wrap_mode(image_np, None, width, height,
-                                 device, x_scale, y_transform, processor_settings, mask_np)
+                                   device, x_scale, y_transform, processor_settings, mask_np)
 
         # Detect facial landmarks
-        landmarks_df = self.face_detector.detect_landmarks(image_np)
+        landmarks_df = self.face_detector.detect_landmarks(image_np, "mediapipe")
         if landmarks_df is None:
             print("No face detected")
             empty_mask = torch.zeros((1, height, width), dtype=torch.float32) if mask is not None else None
@@ -67,11 +68,11 @@ class FaceWrapper:
         # Handle different modes
         if mode == "Debug":
             return self._debug_mode(image_np, landmarks_df, width, height,
-                                  show_detection, show_target, landmark_size,
-                                  show_labels, x_scale, y_transform, processor_settings, mask_np)
+                                    show_detection, show_target, landmark_size,
+                                    show_labels, x_scale, y_transform, processor_settings, mask_np)
         elif mode == "Un-Wrap":
             return self._unwrap_mode(image_np, landmarks_df, width, height,
-                                   device, x_scale, y_transform, processor_settings, mask_np)
+                                     device, x_scale, y_transform, processor_settings, mask_np)
 
     def _convert_to_numpy(self, image):
         """Improved image conversion with channel handling"""

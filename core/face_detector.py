@@ -6,6 +6,7 @@ import torch
 from PIL import Image
 from typing import Union, Optional
 
+
 class FaceDetector:
     def __init__(self):
         """Initialize the FaceDetector with MediaPipe Face Mesh."""
@@ -17,7 +18,14 @@ class FaceDetector:
             min_detection_confidence=0.5
         )
 
-    def detect_landmarks(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[pd.DataFrame]:
+    def detect_landmarks(self, image: Union[torch.Tensor, np.ndarray, Image.Image], method: str = "mediapipe"):
+        if method == "mediapipe":
+            return self.detect_landmarks_mp(image)
+        else:
+            return self.detect_landmarks_dlib(image)
+        pass
+
+    def detect_landmarks_mp(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[pd.DataFrame]:
         """Detect facial landmarks in the given image."""
         image_np = self._convert_to_numpy(image)
         if image_np is None:
@@ -43,6 +51,13 @@ class FaceDetector:
             landmarks_data['index'].append(idx)
 
         return pd.DataFrame(landmarks_data)
+
+    def detect_landmarks_dlib(self, image: Union[torch.Tensor, np.ndarray, Image.Image]):
+        """
+        PlaceHolder
+        returns pd.dataframe with dlib landmarks
+        """
+        pass
 
     def _convert_to_numpy(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[np.ndarray]:
         """Convert different image types to numpy array."""

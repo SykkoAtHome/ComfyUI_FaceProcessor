@@ -44,9 +44,9 @@ class HighPassFilter:
                     "step": 1
                 }),
                 "gamma": ("FLOAT", {
-                    "default": 1,
-                    "min": 0,
-                    "max": 2,
+                    "default": 1.0,
+                    "min": 0.0,
+                    "max": 2.0,
                     "step": 0.01
                 }),
                 "show_histogram": ("BOOLEAN", {

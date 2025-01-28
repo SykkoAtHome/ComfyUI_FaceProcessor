@@ -63,7 +63,7 @@ class FaceFitAndRestore:
             return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
         # Detect facial landmarks
-        landmarks_df = self.face_detector.detect_landmarks(image_np)
+        landmarks_df = self.face_detector.detect_landmarks(image_np, "mediapipe")
         if landmarks_df is None:
             print("No face detected, returning original image")
             return (image, {}, self._create_empty_mask(image), int(bbox_size))
