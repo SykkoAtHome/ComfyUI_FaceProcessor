@@ -1,108 +1,43 @@
 import numpy as np
-import os
+from typing import Optional, Tuple, List, Union
+
+from core.resources.model_loader import ModelOBJ
 
 
 class MediapipeBaseLandmarks:
+
     """
-    Class for handling base landmark positions and face topology loaded from OBJ file.
+    Class for handling base landmark positions and face topology.
     Coordinates are stored in normalized 0-1 range.
     """
-    _base_landmarks = None
-    _faces = None
-    _boundary_faces = None
-    _boundary_landmarks = None
+    _instance: Optional[ModelOBJ] = None
+    _boundary_faces: Optional[np.ndarray] = None
+    _boundary_landmarks: Optional[np.ndarray] = None
+    _current_size: Optional[Union[int, Tuple[int, int]]] = None
 
-    # Face oval landmarks in clockwise order
-    OVAL_LANDMARKS = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
-                      397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
-                      172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
 
     @classmethod
-    def _transform_landmarks(cls, landmarks, x_scale=1.0, y_translation=0.0):
+    def _get_model_instance(cls) -> ModelOBJ:
         """
-        Apply transformations to landmarks with horizontal influence scaling:
-        - x_scale: horizontal scaling (0.5 to 1.0) with horizontal distance influence
-        - y_translation: vertical translation (-0.5 to 0.5)
+        Get or create ModelOBJ instance using singleton pattern
+
+        Returns:
+            ModelOBJ: Instance of model loader
         """
-        transformed = landmarks.copy()
-
-        # Calculate center point
-        center_x = (landmarks[:, 0].min() + landmarks[:, 0].max()) / 2
-
-        # Calculate horizontal distance from center (normalized to 0-1)
-        dx = np.abs(transformed[:, 0] - center_x)
-        influence = np.clip(dx / center_x, 0, 1)
-
-        # Calculate scaled positions with horizontal influence
-        scale_factor = 1.0 + (x_scale - 1.0) * influence
-        transformed[:, 0] = center_x + (transformed[:, 0] - center_x) * scale_factor
-
-        # Apply vertical translation
-        transformed[:, 1] += y_translation
-
-        return transformed
+        if cls._instance is None:
+            cls._instance = ModelOBJ()
+        return cls._instance
 
     @classmethod
-    def _load_obj_data(cls):
-        """
-        Load UV coordinates, vertices and face indices from OBJ file.
-        Returns array of normalized [u,v] coordinates mapped to correct vertex indices
-        and array of face indices.
-        """
-        if cls._base_landmarks is not None and cls._faces is not None:
-            return cls._base_landmarks, cls._faces
-
-        current_dir = os.path.dirname(os.path.realpath(__file__))
-        obj_path = os.path.join(current_dir, 'mediapipe_landmarks_468.obj')
-
-        vertices = []
-        uvs = []
-        faces = []
-        vertex_to_uv = {}
-
-        print(f"Loading 3D face model from: {obj_path}")
-
-        with open(obj_path, 'r') as f:
-            for line in f:
-                if line.startswith('v '):
-                    parts = line.strip().split()
-                    vertices.append([float(p) for p in parts[1:4]])
-                elif line.startswith('vt '):
-                    parts = line.strip().split()
-                    u = float(parts[1])
-                    v = 1.0 - float(parts[2])
-                    uvs.append([u, v])
-                elif line.startswith('f '):
-                    parts = line.strip().split()[1:]
-                    face_verts = []
-                    for part in parts:
-                        indices = part.split('/')
-                        if len(indices) >= 2:
-                            vertex_idx = int(indices[0]) - 1
-                            uv_idx = int(indices[1]) - 1
-                            vertex_to_uv[vertex_idx] = uv_idx
-                            face_verts.append(vertex_idx)
-                    if len(face_verts) == 3:
-                        faces.append(face_verts)
-
-        print(f"Loaded {len(vertices)} vertices, {len(uvs)} UVs, {len(faces)} faces")
-
-        uvs = np.array(uvs, dtype=np.float32)
-        faces = np.array(faces, dtype=np.int32)
-        landmarks = np.zeros((468, 2), dtype=np.float32)
-
-        for vertex_idx, uv_idx in vertex_to_uv.items():
-            if vertex_idx < len(landmarks):
-                landmarks[vertex_idx] = uvs[uv_idx]
-
-        cls._base_landmarks = landmarks
-        cls._faces = faces
-        return cls._base_landmarks, cls._faces
-
-    @classmethod
-    def create_boundary_triangles(cls, size):
+    def create_boundary_triangles(cls, size) -> np.ndarray:
         """
         Create additional triangles between face oval and image boundaries
+
+        Args:
+            size: Target size (int or tuple of width, height)
+
+        Returns:
+            numpy.ndarray: Array of boundary face indices
         """
         if isinstance(size, int):
             width = height = size
@@ -145,7 +80,7 @@ class MediapipeBaseLandmarks:
             }
         }
 
-        current_point_idx = len(cls._base_landmarks)
+        current_point_idx = cls._get_model_instance().num_landmarks
 
         for edge_name, edge_info in edges.items():
             print(f"Processing {edge_name} edge")
@@ -155,7 +90,7 @@ class MediapipeBaseLandmarks:
             print(f"Creating {n_segments} segments for {len(landmarks)} landmarks")
 
             # Generate normalized edge points
-            edge_points = cls.interpolate_edge_points(
+            edge_points = cls._interpolate_edge_points(
                 edge_info['start'],
                 edge_info['end'],
                 n_segments
@@ -189,9 +124,19 @@ class MediapipeBaseLandmarks:
         return cls._boundary_faces
 
     @staticmethod
-    def interpolate_edge_points(start_pos, end_pos, n_segments):
+    def _interpolate_edge_points(start_pos: Tuple[float, float],
+                                 end_pos: Tuple[float, float],
+                                 n_segments: int) -> List[Tuple[float, float]]:
         """
         Interpolate points along an edge
+
+        Args:
+            start_pos: Start position (x, y)
+            end_pos: End position (x, y)
+            n_segments: Number of segments to create
+
+        Returns:
+            List[Tuple[float, float]]: List of interpolated points
         """
         points = []
         for i in range(n_segments + 1):
@@ -202,7 +147,8 @@ class MediapipeBaseLandmarks:
         return points
 
     @classmethod
-    def get_face_triangles(cls, size=None, x_scale=1.0, y_translation=0.0):
+    def get_face_triangles(cls, size=None, x_scale: float = 1.0, y_translation: float = 0.0) -> Tuple[
+        np.ndarray, np.ndarray]:
         """
         Get face triangulation including boundary triangles with optional transformations
 
@@ -212,16 +158,15 @@ class MediapipeBaseLandmarks:
             y_translation: Vertical translation (-0.5 to 0.5)
 
         Returns:
-            tuple: (triangles array, landmarks array)
+            Tuple[np.ndarray, np.ndarray]: (triangles array, landmarks array)
         """
-        landmarks, faces = cls._load_obj_data()
+        model = cls._get_model_instance()
+        landmarks = model.get_transformed_landmarks(x_scale, y_translation)
+        faces = model.get_faces()
 
         # Create boundary triangles if needed (using normalized coordinates)
         if cls._boundary_faces is None:
             cls.create_boundary_triangles(size)
-
-        # Apply transformations to landmarks
-        landmarks = cls._transform_landmarks(landmarks, x_scale, y_translation)
 
         if size is not None:
             if isinstance(size, tuple):
@@ -246,10 +191,8 @@ class MediapipeBaseLandmarks:
 
         return faces, landmarks
 
-
-
     @classmethod
-    def get_base_landmarks(cls, size=None, x_scale=1.0, y_translation=0.0):
+    def get_base_landmarks(cls, size=None, x_scale: float = 1.0, y_translation: float = 0.0) -> np.ndarray:
         """
         Get base landmark positions with optional transformations.
 
@@ -259,12 +202,10 @@ class MediapipeBaseLandmarks:
             y_translation: Vertical translation (-0.5 to 0.5)
 
         Returns:
-            numpy array: Base landmarks with applied transformations
+            numpy.ndarray: Base landmarks with applied transformations
         """
-        landmarks, _ = cls._load_obj_data()
-
-        # Apply transformations before scaling to size
-        landmarks = cls._transform_landmarks(landmarks, x_scale, y_translation)
+        model = cls._get_model_instance()
+        landmarks = model.get_transformed_landmarks(x_scale, y_translation)
 
         if size is not None:
             if isinstance(size, tuple):
@@ -273,18 +214,3 @@ class MediapipeBaseLandmarks:
                 landmarks = landmarks * size
 
         return landmarks
-
-
-
-    @staticmethod
-    def validate_size(size):
-        """
-        Validate size parameter
-        """
-        if isinstance(size, (int, tuple)):
-            if isinstance(size, int) and size <= 0:
-                raise ValueError("Size must be a positive integer")
-            if isinstance(size, tuple) and (len(size) != 2 or size[0] <= 0 or size[1] <= 0):
-                raise ValueError("Size tuple must contain two positive integers")
-            return size
-        raise ValueError("Size must be an integer or tuple of two integers")

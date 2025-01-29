@@ -1,24 +1,21 @@
+from typing import Union, Optional
+
+import cv2
 import mediapipe as mp
 import numpy as np
 import pandas as pd
-import cv2
 import torch
-import os
 from PIL import Image
-from pandas import DataFrame
-from typing import Union, Optional
-from core.lm_mapping import LandmarkMappings
-import dlib
-import insightface
 from insightface.app import FaceAnalysis
-from insightface.utils import face_align
+from pandas import DataFrame
+
+from core.lm_mapping import LandmarkMappings
+from core.resources.model_loader import ModelDlib
 
 
 class FaceDetector:
-    _model_loaded = False  # Class variable to track if model was loaded
-
     def __init__(self):
-        """Initialize the FaceDetector with MediaPipe Face Mesh and Dlib."""
+        """Initialize the FaceDetector with MediaPipe Face Mesh."""
         # MediaPipe initialization
         self.mp_face_mesh = mp.solutions.face_mesh
         self.face_mesh = self.mp_face_mesh.FaceMesh(
@@ -28,26 +25,11 @@ class FaceDetector:
             min_detection_confidence=0.5
         )
 
-        # Dlib initialization
-        self.face_detector = dlib.get_frontal_face_detector()
+        # Initialize InsightFace (lazy loading)
+        self.insight_app = None
 
-        # Initialize InsightFace
-        self.insight_app = None  # Lazy loading for InsightFace
-
-        # Get path to the model file
-        current_dir = os.path.dirname(os.path.realpath(__file__))
-        model_path = os.path.join(current_dir, "resources", "shape_predictor_68_face_landmarks.dat")
-
-        if not os.path.exists(model_path):
-            print(f"Dlib landmarks model not found at: {model_path}")
-            print("Please ensure the model file is placed in the core/resources directory")
-            raise FileNotFoundError(f"Missing model file at: {model_path}")
-
-        if not FaceDetector._model_loaded:
-            print(f"Loading dlib model from: {model_path}")
-            FaceDetector._model_loaded = True
-
-        self.shape_predictor = dlib.shape_predictor(model_path)
+        # Dlib models will be initialized on demand
+        self.dlib_model = None
 
     def detect_landmarks(self,
                          image: Union[torch.Tensor, np.ndarray, Image.Image],
@@ -128,6 +110,10 @@ class FaceDetector:
             Optional[pd.DataFrame]: DataFrame containing landmark coordinates (x, y) and indices or None if no face detected
         """
         try:
+            # Initialize Dlib model if not already done
+            if self.dlib_model is None:
+                self.dlib_model = ModelDlib()
+
             # Convert image to numpy format suitable for dlib
             image_np = self._convert_to_numpy(image)
             if image_np is None:
@@ -137,8 +123,8 @@ class FaceDetector:
             # Convert to grayscale for dlib
             gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
 
-            # Detect faces
-            faces = self.face_detector(gray)
+            # Detect faces using Dlib face detector
+            faces = self.dlib_model.face_detector(gray)
             if not faces:
                 print("No face detected by dlib")
                 return None
@@ -146,8 +132,8 @@ class FaceDetector:
             # Get first face
             face = faces[0]
 
-            # Detect landmarks
-            shape = self.shape_predictor(gray, face)
+            # Detect landmarks using shape predictor
+            shape = self.dlib_model.shape_predictor(gray, face)
 
             # Create landmark data structure
             landmarks_data = {
