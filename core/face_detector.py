@@ -6,11 +6,10 @@ import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
-from insightface.app import FaceAnalysis
 from pandas import DataFrame
 
 from core.lm_mapping import LandmarkMappings
-from core.resources.model_loader import ModelDlib
+from core.resources.model_loader import ModelDlib, ModelInsightFace
 
 
 class FaceDetector:
@@ -25,16 +24,14 @@ class FaceDetector:
             min_detection_confidence=0.5
         )
 
-        # Initialize InsightFace (lazy loading)
-        self.insight_app = None
-
-        # Dlib models will be initialized on demand
+        # Models will be initialized on demand
         self.dlib_model = None
+        self.insight_model = None
 
     def detect_landmarks(self,
-                         image: Union[torch.Tensor, np.ndarray, Image.Image],
-                         refiner: Optional[str] = None
-                         ) -> Union[DataFrame, None]:
+                        image: Union[torch.Tensor, np.ndarray, Image.Image],
+                        refiner: Optional[str] = None
+                        ) -> Union[DataFrame, None]:
         """
         Detect facial landmarks using MediaPipe with optional refinement.
 
@@ -62,8 +59,7 @@ class FaceDetector:
                 if insight_landmarks is not None:
                     return self.landmarks_interpolation(mp_landmarks, insight_landmarks)
 
-        else:
-            return mp_landmarks
+        return mp_landmarks
 
 
     def detect_landmarks_mp(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[pd.DataFrame]:
@@ -166,7 +162,9 @@ class FaceDetector:
             Optional[pd.DataFrame]: DataFrame containing landmark coordinates (x, y) and indices
         """
         try:
-            self._init_insightface()
+            # Initialize InsightFace model if not already done
+            if self.insight_model is None:
+                self.insight_model = ModelInsightFace()
 
             # Convert image to numpy format
             image_np = self._convert_to_numpy(image)
@@ -174,7 +172,7 @@ class FaceDetector:
                 return None
 
             # Detect faces
-            faces = self.insight_app.get(image_np)
+            faces = self.insight_model.app.get(image_np)
             if not faces:
                 print("No face detected by InsightFace")
                 return None
@@ -190,7 +188,7 @@ class FaceDetector:
                 'index': range(len(landmarks))
             }
 
-            print(pd.DataFrame(landmarks_data).to_string())
+            print(f"Detected {len(landmarks)} landmarks using InsightFace")
             return pd.DataFrame(landmarks_data)
 
         except Exception as e:
@@ -295,14 +293,3 @@ class FaceDetector:
         """Clean up resources."""
         if hasattr(self, 'face_mesh'):
             self.face_mesh.close()
-
-    def _init_insightface(self):
-        """Lazy initialization of InsightFace to save memory when not used"""
-        if self.insight_app is None:
-            print("Initializing InsightFace detector...")
-            self.insight_app = FaceAnalysis(
-                allowed_modules=['detection', 'landmark_2d_106'],
-                providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
-            )
-            self.insight_app.prepare(ctx_id=0, det_size=(640, 640))
-            print("InsightFace initialized successfully")
