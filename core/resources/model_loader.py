@@ -1,13 +1,11 @@
 import os
+from typing import Optional, Dict, List
+
+import dlib
+import mediapipe as mp
 import numpy as np
 import requests
-import hashlib
 from tqdm import tqdm
-from typing import Optional, Dict, List
-import dlib
-import insightface
-from insightface.app import FaceAnalysis
-import mediapipe as mp
 
 
 class ModelDownload:
@@ -245,6 +243,78 @@ class ModelOBJ:
 
         return transformed
 
+    @property
+    def num_landmarks(self) -> int:
+        """
+        Get the number of landmarks
+
+        Returns:
+            int: Number of landmarks
+        """
+        return self._num_landmarks
+
+    def _initialize_landmarks(self) -> np.ndarray:
+        """
+        Initialize landmarks array from UV coordinates
+
+        Returns:
+            numpy.ndarray: Array of landmark coordinates in UV space
+        """
+        landmarks = np.zeros((self._num_landmarks, 2), dtype=np.float32)
+        uvs = np.array(self._uvs, dtype=np.float32)
+
+        for vertex_idx, uv_idx in self._vertex_to_uv.items():
+            if vertex_idx < self._num_landmarks:
+                landmarks[vertex_idx] = uvs[uv_idx]
+
+        return landmarks
+
+    def get_faces(self) -> np.ndarray:
+        """
+        Get face indices as numpy array
+
+        Returns:
+            numpy.ndarray: Array of face indices
+        """
+        return np.array(self._faces, dtype=np.int32)
+
+    def get_transformed_landmarks(self, x_scale: float = 1.0, y_translation: float = 0.0) -> np.ndarray:
+        """
+        Get landmarks with applied transformations
+
+        Args:
+            x_scale: Horizontal scaling factor (0.5 to 1.0)
+            y_translation: Vertical translation (-0.5 to 0.5)
+
+        Returns:
+            numpy.ndarray: Transformed landmarks
+        """
+        if self._landmarks is None:
+            raise RuntimeError("Landmarks not initialized")
+
+        transformed = self._landmarks.copy()
+
+        # Calculate center point
+        center_x = (self._landmarks[:, 0].min() + self._landmarks[:, 0].max()) / 2
+
+        # Calculate horizontal distance from center (normalized to 0-1)
+        dx = np.abs(transformed[:, 0] - center_x)
+
+        # Avoid division by zero
+        if np.abs(center_x) < 1e-6:  # Use small epsilon value
+            influence = np.zeros_like(dx)
+        else:
+            influence = np.clip(dx / center_x, 0, 1)
+
+        # Calculate scaled positions with horizontal influence
+        scale_factor = 1.0 + (x_scale - 1.0) * influence
+        transformed[:, 0] = center_x + (transformed[:, 0] - center_x) * scale_factor
+
+        # Apply vertical translation
+        transformed[:, 1] += y_translation
+
+        return transformed
+
 
 class ModelDlib:
     """Class for loading and managing Dlib face detection models using singleton pattern"""
@@ -299,65 +369,6 @@ class ModelDlib:
         if not self._shape_predictor:
             self._initialize_models()
         return self._shape_predictor
-
-
-class ModelInsightFace:
-    """Class for loading and managing InsightFace models using singleton pattern"""
-
-    _instance: Optional['ModelInsightFace'] = None
-    _app: Optional[FaceAnalysis] = None
-    _model_loaded: bool = False
-    _models_dir = None
-
-    def __new__(cls):
-        """Implement singleton pattern"""
-        if cls._instance is None:
-            cls._instance = super(ModelInsightFace, cls).__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        """Initialize InsightFace model loader"""
-        if not self._model_loaded:
-            self._initialize_models()
-
-    def _initialize_models(self) -> None:
-        """Initialize InsightFace models"""
-        try:
-            print("Initializing InsightFace detector...")
-
-            # Set base models directory (without 'models' as InsightFace adds it)
-            current_dir = os.path.dirname(os.path.realpath(__file__))
-            base_dir = os.path.dirname(os.path.dirname(current_dir))  # Go up to custom_nodes dir
-            self._models_dir = os.path.join(base_dir, "models", "insightface")
-            os.makedirs(self._models_dir, exist_ok=True)
-
-            # Set model root directory for InsightFace
-            os.environ['INSIGHTFACE_HOME'] = self._models_dir
-
-            # Initialize FaceAnalysis
-            self._app = FaceAnalysis(
-                allowed_modules=['detection', 'landmark_2d_106'],
-                providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
-                root=self._models_dir
-            )
-
-            # Prepare the model
-            self._app.prepare(ctx_id=0, det_size=(640, 640))
-
-            self._model_loaded = True
-            print("InsightFace models initialized successfully")
-
-        except Exception as e:
-            print(f"Error initializing InsightFace models: {str(e)}")
-            raise
-
-
-    @property
-    def app(self) -> FaceAnalysis:
-        """Get InsightFace FaceAnalysis instance"""
-        if not self._app:
-            self._initialize_models()
-        return self._app
 
 
 class ModelMediaPipe:

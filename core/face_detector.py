@@ -9,7 +9,7 @@ from PIL import Image
 from pandas import DataFrame
 
 from core.lm_mapping import LandmarkMappings
-from core.resources.model_loader import ModelDlib, ModelInsightFace, ModelMediaPipe
+from core.resources.model_loader import ModelDlib, ModelMediaPipe
 
 
 class FaceDetector:
@@ -45,11 +45,6 @@ class FaceDetector:
                 dlib_landmarks = self.detect_landmarks_dlib(image)
                 if dlib_landmarks is not None:
                     return self.landmarks_interpolation(mp_landmarks, dlib_landmarks)
-
-            if refiner.lower() == 'insightface':
-                insight_landmarks = self.detect_landmarks_insight(image)
-                if insight_landmarks is not None:
-                    return self.landmarks_interpolation(mp_landmarks, insight_landmarks)
 
         return mp_landmarks
 
@@ -155,50 +150,6 @@ class FaceDetector:
 
         except Exception as e:
             print(f"Error in dlib landmark detection: {str(e)}")
-            return None
-
-    def detect_landmarks_insight(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[pd.DataFrame]:
-        """
-        Detect facial landmarks using InsightFace.
-
-        Args:
-            image: Input image in various formats
-
-        Returns:
-            Optional[pd.DataFrame]: DataFrame containing landmark coordinates (x, y) and indices
-        """
-        try:
-            # Initialize InsightFace model if not already done
-            if self.insight_model is None:
-                self.insight_model = ModelInsightFace()
-
-            # Convert image to numpy format
-            image_np = self._convert_to_numpy(image)
-            if image_np is None:
-                return None
-
-            # Detect faces
-            faces = self.insight_model.app.get(image_np)
-            if not faces:
-                print("No face detected by InsightFace")
-                return None
-
-            # Get landmarks from first face
-            face = faces[0]
-            landmarks = face.landmark_2d_106
-
-            # Create DataFrame
-            landmarks_data = {
-                'x': landmarks[:, 0],
-                'y': landmarks[:, 1],
-                'index': range(len(landmarks))
-            }
-
-            print(f"Detected {len(landmarks)} landmarks using InsightFace")
-            return pd.DataFrame(landmarks_data)
-
-        except Exception as e:
-            print(f"Error in InsightFace landmark detection: {str(e)}")
             return None
 
 

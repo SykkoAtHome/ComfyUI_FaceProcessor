@@ -24,10 +24,10 @@ class FaceWrapper:
             "required": {
                 "image": ("IMAGE",),
                 "mode": (["Debug", "Un-Wrap", "Wrap"], {"default": "Debug"}),
-                "device": (["CPU", "CUDA"], {"default": "CPU"}),
+                "device": (["CPU", "CUDA"], {"default": "CUDA"}),
                 "show_detection": ("BOOLEAN", {"default": False}),
                 "show_target": ("BOOLEAN", {"default": False}),
-                "refiner": (["None", "Dlib", "InsightFace"], {"default": "None"}),
+                "refiner": (["None", "Dlib"], {"default": "None"}),
                 "landmark_size": ("INT", {"default": 4, "min": 1, "max": 10, "step": 1}),
                 "show_labels": ("BOOLEAN", {"default": False}),
                 "x_scale": ("FLOAT", {"default": 1.0, "min": 0.5, "max": 1.0, "step": 0.01}),
