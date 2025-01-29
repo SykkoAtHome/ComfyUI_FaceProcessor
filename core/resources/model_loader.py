@@ -4,7 +4,70 @@ from typing import Optional, Dict, List
 import dlib
 import numpy as np
 from insightface.app import FaceAnalysis
+import mediapipe as mp
 
+
+
+class ModelDownload:
+    """
+    placeholder for model download
+    """
+    MODEL_URLS = {
+        "canonical_face_model": "https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model.obj", # Mediapipe 468 obj model
+        "shape_predictor_68_face_landmarks": "https://huggingface.co/spaces/asdasdasdasd/Face-forgery-detection/resolve/ccfc24642e0210d4d885bc7b3dbc9a68ed948ad6/shape_predictor_68_face_landmarks.dat" # dlib model
+    }
+    def download_model(self, model_name):
+        pass
+
+
+class ModelMediaPipe:
+    """Class for loading and managing MediaPipe face mesh models using singleton pattern"""
+
+    _instance: Optional['ModelMediaPipe'] = None
+    _face_mesh: Optional[mp.solutions.face_mesh.FaceMesh] = None
+    _model_loaded: bool = False
+
+    def __new__(cls):
+        """Implement singleton pattern"""
+        if cls._instance is None:
+            cls._instance = super(ModelMediaPipe, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        """Initialize MediaPipe model loader"""
+        if not self._model_loaded:
+            self._initialize_models()
+
+    def _initialize_models(self) -> None:
+        """Initialize MediaPipe face mesh model"""
+        try:
+            print("Initializing MediaPipe Face Mesh...")
+
+            self._face_mesh = mp.solutions.face_mesh.FaceMesh(
+                static_image_mode=True,
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5
+            )
+
+            self._model_loaded = True
+            print("MediaPipe Face Mesh initialized successfully")
+
+        except Exception as e:
+            print(f"Error initializing MediaPipe models: {str(e)}")
+            raise
+
+    @property
+    def face_mesh(self) -> mp.solutions.face_mesh.FaceMesh:
+        """Get MediaPipe Face Mesh instance"""
+        if not self._face_mesh:
+            self._initialize_models()
+        return self._face_mesh
+
+    def __del__(self):
+        """Clean up resources"""
+        if self._face_mesh:
+            self._face_mesh.close()
 
 class ModelOBJ:
     """Class for loading and parsing OBJ files with landmark transformation support"""
@@ -24,7 +87,7 @@ class ModelOBJ:
     def _load_obj(self) -> None:
         """Load and parse MediaPipe face model OBJ file"""
         current_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-        obj_path = os.path.join(current_dir, 'resources', 'models', 'mediapipe_landmarks_468.obj')
+        obj_path = os.path.join(current_dir, 'resources', 'models', 'canonical_face_model.obj')
 
         print(f"Loading 3D model from: {obj_path}")
 
@@ -188,7 +251,6 @@ class ModelDlib:
         if not self._shape_predictor:
             self._initialize_models()
         return self._shape_predictor
-
 
 class ModelInsightFace:
     """Class for loading and managing InsightFace models using singleton pattern"""
