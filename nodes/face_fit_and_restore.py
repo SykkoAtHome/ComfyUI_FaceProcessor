@@ -4,7 +4,7 @@ import cv2
 import pandas as pd
 from typing import Union, Optional, Tuple
 
-from core.face_detector import FaceDetector
+from ..core.face_detector import FaceDetector
 
 
 class FaceFitAndRestore:

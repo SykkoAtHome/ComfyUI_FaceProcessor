@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Optional, Tuple, List, Union
 
-from core.resources.model_loader import ModelOBJ
+from .resources.model_loader import ModelOBJ
 
 
 class MediapipeBaseLandmarks:

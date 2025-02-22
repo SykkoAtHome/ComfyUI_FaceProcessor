@@ -1,6 +1,6 @@
 import numpy as np
 from PIL import Image
-from core.base_mesh import MediapipeBaseLandmarks
+from .base_mesh import MediapipeBaseLandmarks
 
 class CPUDeformer:
     """

@@ -8,8 +8,8 @@ import torch
 from PIL import Image
 from pandas import DataFrame
 
-from core.lm_mapping import LandmarkMappings
-from core.resources.model_loader import ModelDlib, ModelMediaPipe
+from .lm_mapping import LandmarkMappings
+from .resources.model_loader import ModelDlib, ModelMediaPipe
 
 
 class FaceDetector:
