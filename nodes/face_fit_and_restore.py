@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import torch
-from PIL import Image
 
 from ..core.face_detector import FaceDetector
 from ..core.image_processor import ImageProcessor
@@ -23,6 +22,9 @@ class FaceFitAndRestore:
                 }),
                 "mode": (["Fit", "Restore"], {
                     "default": "Fit"
+                }),
+                "output_mode": (["current_frame", "batch_sequence"], {
+                    "default": "current_frame"
                 }),
                 "padding_percent": ("FLOAT", {
                     "default": 0.0,
@@ -50,7 +52,7 @@ class FaceFitAndRestore:
     FUNCTION = "process_image"
     CATEGORY = "Face Processor"
 
-    def process_image(self, mode, workflow, padding_percent=0.0, bbox_size="1024",
+    def process_image(self, mode, workflow, output_mode, padding_percent=0.0, bbox_size="1024",
                       image=None, fp_pipe=None, image_sequence=None):
         """Process images in either Fit or Restore mode with unified fp_pipe structure."""
 
@@ -73,13 +75,9 @@ class FaceFitAndRestore:
                 "workflow": workflow,
                 "current_frame": 0,
                 "padding_percent": padding_percent,
-                "target_lm": {},  # Will be populated by face_wrapper
+                "target_lm": {},
                 "frames": {}
             }
-        else:
-            # Update common parameters
-            fp_pipe["workflow"] = workflow
-            fp_pipe["padding_percent"] = padding_percent
 
         try:
             if workflow == "single_image":
@@ -106,12 +104,12 @@ class FaceFitAndRestore:
                     frames_to_process = image_sequence["frames"]
 
                 print(f"Processing sequence of {total_frames} frames...")
+                results = {}
                 current_frame_result = None
 
                 # Process each frame
                 for frame_idx in range(total_frames):
                     print(f"Processing frame {frame_idx + 1}/{total_frames}")
-
 
                     if mode == "Fit":
                         frame_path = frames_to_process[frame_idx]
@@ -120,7 +118,15 @@ class FaceFitAndRestore:
                             print(f"Warning: Could not load frame {frame_idx}")
                             continue
                     else:  # Restore
-                        frame_image = image
+                        # Handle potential batch input
+                        if len(image.shape) == 4 and image.shape[0] > 1:  # We have a batch
+                            if frame_idx < image.shape[0]:
+                                frame_image = image[frame_idx:frame_idx + 1]  # Keep the batch dimension
+                            else:
+                                print(f"Warning: Frame index {frame_idx} exceeds batch size {image.shape[0]}")
+                                continue
+                        else:  # Single image
+                            frame_image = image
                         frame_path = None
 
                     # Process frame
@@ -134,16 +140,42 @@ class FaceFitAndRestore:
                         original_path=frame_path if mode == "Fit" else None
                     )
 
-                    # Store results for current frame
+                    # Store results for both current frame and batch processing
+                    results[frame_idx] = result
                     if frame_idx == current_frame:
                         current_frame_result = result
 
-                # After processing all frames, return results for current frame
-                if current_frame_result is None:
-                    print(f"Warning: Frame {current_frame} not found in sequence")
-                    return None, fp_pipe, None, int(bbox_size)
+                # Return based on output mode
+                if output_mode == "current_frame":
+                    if current_frame_result is None:
+                        print(f"Warning: Frame {current_frame} not found in sequence")
+                        return None, fp_pipe, None, int(bbox_size)
+                    return current_frame_result
+                else:  # batch_sequence mode
+                    # Collect all processed frames
+                    all_frames = []
+                    all_masks = []
 
-                return current_frame_result
+                    for idx in range(total_frames):
+                        frame_result = results.get(idx)
+                        if frame_result is not None:
+                            processed_image = frame_result[0]
+                            if processed_image is not None:
+                                all_frames.append(processed_image)
+                                if frame_result[2] is not None:  # If mask exists
+                                    all_masks.append(frame_result[2])
+
+                    if not all_frames:
+                        print("Warning: No frames were successfully processed")
+                        return None, fp_pipe, None, int(bbox_size)
+
+                    # Stack all frames into a single batch tensor
+                    batched_frames = torch.cat(all_frames, dim=0)
+
+                    # Stack masks if they exist
+                    batched_masks = torch.cat(all_masks, dim=0) if all_masks else None
+
+                    return batched_frames, fp_pipe, batched_masks, int(bbox_size)
 
         except Exception as e:
             print(f"Error in process_image: {str(e)}")
