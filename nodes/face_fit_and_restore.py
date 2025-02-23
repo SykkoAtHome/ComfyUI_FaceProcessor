@@ -1,26 +1,27 @@
+import cv2
 import numpy as np
 import torch
-import cv2
-import pandas as pd
-from typing import Union, Optional, Tuple
+from PIL import Image
 
-from core.face_detector import FaceDetector
+from ..core.face_detector import FaceDetector
+from ..core.image_processor import ImageProcessor
 
 
 class FaceFitAndRestore:
-    """ComfyUI node for fitting and restoring faces with a mode selection."""
-
     def __init__(self):
         self.face_detector = FaceDetector()
+        self.image_processor = ImageProcessor()
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "workflow": (["single_image", "image_sequence"], {
+                    "default": "single_image"
+                }),
                 "mode": (["Fit", "Restore"], {
                     "default": "Fit"
                 }),
-                "image": ("IMAGE",),
                 "padding_percent": ("FLOAT", {
                     "default": 0.0,
                     "min": 0.0,
@@ -32,7 +33,11 @@ class FaceFitAndRestore:
                 }),
             },
             "optional": {
+                "image": ("IMAGE",),
                 "processor_settings": ("DICT", {
+                    "default": None
+                }),
+                "frames_data": ("DICT", {
                     "default": None
                 }),
             }
@@ -43,22 +48,96 @@ class FaceFitAndRestore:
     FUNCTION = "process_image"
     CATEGORY = "Face Processor"
 
-    def process_image(self, mode, image, padding_percent=0.0, bbox_size="1024", processor_settings=None):
-        if mode == "Fit":
-            return self._fit(image, padding_percent, bbox_size)
-        elif mode == "Restore":
-            if processor_settings is None:
-                print("Processor settings are required in Restore mode, returning original image")
-                return (image, {}, self._create_empty_mask(image))
-            return self._restore(image, processor_settings)
-        else:
-            print(f"Invalid mode: {mode}, returning original image")
-            return (image, {}, self._create_empty_mask(image))
+    def process_image(self, mode, workflow, padding_percent=0.0, bbox_size="1024",
+                      image=None, processor_settings=None, frames_data=None):
+
+        if mode == "Restore" and processor_settings and "workflow" in processor_settings:
+            workflow = processor_settings["workflow"]
+            print(f"Using workflow from processor settings: {workflow}")
+
+        if workflow == "single_image":
+            if image is None:
+                print("Error: Image is required for single_image workflow")
+                return (None, {}, None, int(bbox_size))
+
+            if mode == "Fit":
+                result = self._fit(image, padding_percent, bbox_size)
+            else:  # Restore
+                if processor_settings is None:
+                    print("Error: Processor settings are required in Restore mode")
+                    return (None, {}, None, int(bbox_size))
+                result = self._restore(image, processor_settings)
+
+            # Add workflow info to settings
+            result_settings = result[1]
+            result_settings["workflow"] = "single_image"
+            return result
+
+
+        elif workflow == "image_sequence":
+
+            if frames_data is None or not frames_data.get("frames"):
+                print("Error: Valid frames_data is required for image_sequence workflow")
+
+                return (None, {}, None, int(bbox_size))
+
+            sequence_settings = {
+
+                "workflow": "image_sequence",
+
+                "frames": {}
+
+            }
+
+            first_result = None
+
+            total_frames = len(frames_data["frames"])
+
+            print(f"Processing sequence of {total_frames} frames...")
+
+            for frame_idx, frame_path in frames_data["frames"].items():
+
+                print(f"Processing frame {frame_idx + 1}/{total_frames}")
+
+                try:
+
+                    # Load image from path
+                    frame_tensor = self._load_image_from_path(frame_path)
+                    if frame_tensor is None:
+                        continue
+
+                    if mode == "Fit":
+                        result = self._fit(frame_tensor, padding_percent, bbox_size)
+                        result[1]["original_image_path"] = frame_path
+                    elif mode == "Restore":
+                        frame_settings = processor_settings.get("frames", {}).get(f"frame_{frame_idx}")
+                        if frame_settings is None:
+                            print(f"Warning: No processor settings for frame {frame_idx}")
+                            continue
+
+                        print(f"Processing restore for frame {frame_idx} with settings: {frame_settings}")
+                        result = self._restore(frame_tensor, frame_settings)
+
+                    if first_result is None:
+                        first_result = result
+
+                    sequence_settings["frames"][f"frame_{frame_idx}"] = result[1]
+
+
+                except Exception as e:
+
+                    print(f"Error processing frame {frame_idx}: {str(e)}")
+
+                    continue
+
+            if first_result is None:
+                return (None, sequence_settings, None, int(bbox_size))
+
+            return (first_result[0], sequence_settings, first_result[2], int(bbox_size))
 
     def _fit(self, image, padding_percent, bbox_size):
         """Fit mode: Crop and process the face."""
-        # Convert tensor to numpy
-        image_np = self._convert_to_numpy(image)
+        image_np = self.image_processor._convert_to_numpy(image)
         if image_np is None:
             return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
@@ -69,21 +148,22 @@ class FaceFitAndRestore:
             return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
         # Calculate rotation angle and rotate the image
-        rotation_angle = self._calculate_rotation_angle(landmarks_df)
-        rotated_image, updated_landmarks = self._rotate_image(image_np, landmarks_df)
+        rotation_angle = self.image_processor.calculate_rotation_angle(landmarks_df)
+        rotated_image, updated_landmarks = self.image_processor.rotate_image(image_np, landmarks_df)
         if rotated_image is None:
             print("Failed to rotate image, returning original")
             return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
         # Crop face region to a square (1:1)
-        cropped_face, crop_bbox = self._crop_face_to_square(rotated_image, updated_landmarks, padding_percent)
+        cropped_face, crop_bbox = self.image_processor.crop_face_to_square(rotated_image, updated_landmarks,
+                                                                           padding_percent)
         if cropped_face is None:
             print("Failed to crop face, returning original image")
             return (image, {}, self._create_empty_mask(image), int(bbox_size))
 
         # Resize to target size
         target_size = int(bbox_size)
-        final_image = self._resize_image(cropped_face, target_size)
+        final_image = self.image_processor.resize_image(cropped_face, target_size)
         if final_image is None:
             print("Failed to resize image, returning original")
             return (image, {}, self._create_empty_mask(image), int(bbox_size))
@@ -99,6 +179,7 @@ class FaceFitAndRestore:
             "crop_bbox": crop_bbox,  # (x, y, w, h)
             "padding_percent": padding_percent,
             "bbox_size": target_size,
+            "original_image_path": None
         }
 
         # Create a mask for the face area
@@ -121,8 +202,14 @@ class FaceFitAndRestore:
 
     def _restore(self, image, processor_settings):
         """Restore mode: Restore the face to the original image."""
-        processed_face_np = self._convert_to_numpy(image)
+
+        if processor_settings is None:
+            print("Error in restore: processor_settings is None")
+            return (image, {}, self._create_empty_mask(image))
+
+        processed_face_np = self.image_processor._convert_to_numpy(image)
         if processed_face_np is None:
+            print("Error in restore: Failed to convert image to numpy array")
             return (image, {}, self._create_empty_mask(image))
 
         original_image_shape = processor_settings.get("original_image_shape")
@@ -131,29 +218,43 @@ class FaceFitAndRestore:
         padding_percent = processor_settings.get("padding_percent")
         bbox_size = processor_settings.get("bbox_size")
 
+        # Debug info
+        print(f"Restore settings: shape={original_image_shape}, rotation={rotation_angle}, bbox={crop_bbox}")
+
         if not all([original_image_shape, crop_bbox]):
-            print("Invalid processor settings, returning processed face")
+            missing = []
+            if not original_image_shape:
+                missing.append("original_image_shape")
+            if not crop_bbox:
+                missing.append("crop_bbox")
+            print(f"Error in restore: Missing required settings: {', '.join(missing)}")
             return (image, {}, self._create_empty_mask(image))
 
-        restored_image = np.zeros(original_image_shape, dtype=np.uint8)
+        try:
+            restored_image = np.zeros(original_image_shape, dtype=np.uint8)
 
-        x1, y1, w, h = crop_bbox
-        resized_face = cv2.resize(processed_face_np, (w, h), interpolation=cv2.INTER_LANCZOS4)
+            x1, y1, w, h = crop_bbox
+            resized_face = cv2.resize(processed_face_np, (w, h), interpolation=cv2.INTER_LANCZOS4)
 
-        restored_image[y1:y1 + h, x1:x1 + w] = resized_face
+            restored_image[y1:y1 + h, x1:x1 + w] = resized_face
 
-        if rotation_angle != 0:
-            height, width = original_image_shape[:2]
-            center = (width // 2, height // 2)
-            rotation_matrix = cv2.getRotationMatrix2D(center, -rotation_angle, 1.0)
-            restored_image = cv2.warpAffine(restored_image, rotation_matrix, (width, height), flags=cv2.INTER_LANCZOS4)
+            if rotation_angle != 0:
+                height, width = original_image_shape[:2]
+                center = (width // 2, height // 2)
+                rotation_matrix = cv2.getRotationMatrix2D(center, -rotation_angle, 1.0)
+                restored_image = cv2.warpAffine(restored_image, rotation_matrix, (width, height),
+                                                flags=cv2.INTER_LANCZOS4)
 
-        restored_image = restored_image.astype(np.float32) / 255.0
-        restored_image = torch.from_numpy(restored_image).unsqueeze(0)
+            restored_image = restored_image.astype(np.float32) / 255.0
+            restored_image = torch.from_numpy(restored_image).unsqueeze(0)
 
-        mask = self._create_mask(original_image_shape, crop_bbox, rotation_angle)
+            mask = self._create_mask(original_image_shape, crop_bbox, rotation_angle)
 
-        return (restored_image, {}, mask)
+            return (restored_image, processor_settings, mask)
+
+        except Exception as e:
+            print(f"Error in restore: {str(e)}")
+            return (image, processor_settings, self._create_empty_mask(image))
 
     def _create_mask(self, image_shape, crop_bbox, rotation_angle):
         """Create a mask for the face area."""
@@ -163,14 +264,13 @@ class FaceFitAndRestore:
         # Draw a white rectangle for the face area
         mask[y1:y1 + h, x1:x1 + w] = 1.0
 
-        # Rotate the mask back to the original orientation (reverse the rotation)
+        # Rotate the mask back to the original orientation
         if rotation_angle != 0:
             height, width = image_shape[:2]
             center = (width // 2, height // 2)
             rotation_matrix = cv2.getRotationMatrix2D(center, -rotation_angle, 1.0)
             mask = cv2.warpAffine(mask, rotation_matrix, (width, height), flags=cv2.INTER_LINEAR)
 
-        # Convert to torch tensor
         mask = torch.from_numpy(mask).unsqueeze(0)
         return mask
 
@@ -183,127 +283,12 @@ class FaceFitAndRestore:
         mask = torch.zeros((1, *image_shape), dtype=torch.float32)
         return mask
 
-    def _convert_to_numpy(self, image: torch.Tensor) -> Optional[np.ndarray]:
-        """Convert tensor to numpy array."""
-        if torch.is_tensor(image):
-            image = image.detach().cpu().numpy()
-            if len(image.shape) == 4:
-                image = image[0]
-            image = (image * 255).astype(np.uint8)
-            return image
-        return None
-
-    def _calculate_rotation_angle(self, landmarks_df: pd.DataFrame) -> float:
-        """Calculate rotation angle based on eyes position."""
-        if landmarks_df is None or landmarks_df.empty:
-            return 0.0
-
-        LEFT_EYE = 33  # Center of the left eye
-        RIGHT_EYE = 263  # Center of the right eye
-
-        left_eye = landmarks_df[landmarks_df['index'] == LEFT_EYE].iloc[0]
-        right_eye = landmarks_df[landmarks_df['index'] == RIGHT_EYE].iloc[0]
-
-        dx = right_eye['x'] - left_eye['x']
-        dy = right_eye['y'] - left_eye['y']
-        return np.degrees(np.arctan2(dy, dx))
-
-    def _rotate_image(self, image: np.ndarray, landmarks_df: pd.DataFrame) -> Tuple[Optional[np.ndarray], Optional[pd.DataFrame]]:
-        """Rotate image based on facial landmarks."""
-        if image is None or landmarks_df is None:
-            return None, None
-
-        angle = self._calculate_rotation_angle(landmarks_df)
-        height, width = image.shape[:2]
-        center = (width // 2, height // 2)
-
-        rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
-        rotated_image = cv2.warpAffine(image, rotation_matrix, (width, height), flags=cv2.INTER_LANCZOS4)
-
-        # Transform landmarks
-        ones = np.ones(shape=(len(landmarks_df), 1))
-        points = np.hstack([landmarks_df[['x', 'y']].values, ones])
-        transformed_points = rotation_matrix.dot(points.T).T
-
-        updated_landmarks = landmarks_df.copy()
-        updated_landmarks['x'] = transformed_points[:, 0]
-        updated_landmarks['y'] = transformed_points[:, 1]
-
-        return rotated_image, updated_landmarks
-
-    def _crop_face_to_square(self, image: np.ndarray, landmarks_df: pd.DataFrame, padding_percent: float = 0.0) -> Tuple[Optional[np.ndarray], Optional[Tuple[int, int, int, int]]]:
-        """Crop face region to a square (1:1) based on landmarks."""
-        bbox = self._calculate_face_bbox(landmarks_df, padding_percent)
-        if bbox is None:
-            return None, None
-
-        x, y, w, h = bbox
-
-        # Calculate the center of the bounding box
-        center_x = x + w // 2
-        center_y = y + h // 2
-
-        # Determine the size of the square crop
-        crop_size = max(w, h)
-        half_size = crop_size // 2
-
-        # Calculate the crop coordinates
-        x1 = max(0, center_x - half_size)
-        y1 = max(0, center_y - half_size)
-        x2 = min(image.shape[1], center_x + half_size)
-        y2 = min(image.shape[0], center_y + half_size)
-
-        # Adjust if the crop goes out of bounds
-        if x2 - x1 < crop_size:
-            x1 = max(0, x2 - crop_size)
-        if y2 - y1 < crop_size:
-            y1 = max(0, y2 - crop_size)
-
-        # Crop the image
-        cropped_face = image[y1:y2, x1:x2]
-
-        # Return the cropped face and the crop bounding box
-        return cropped_face, (x1, y1, x2 - x1, y2 - y1)
-
-    def _calculate_face_bbox(self, landmarks_df: pd.DataFrame, padding_percent: float = 0.0) -> Optional[Tuple[int, int, int, int]]:
-        """Calculate bounding box for face based on landmarks."""
-        if landmarks_df is None or landmarks_df.empty:
+    def _load_image_from_path(self, image_path):
+        """Load and convert image from file path to tensor format."""
+        try:
+            frame_image = Image.open(image_path)
+            frame_tensor = torch.from_numpy(np.array(frame_image).astype(np.float32) / 255.0).unsqueeze(0)
+            return frame_tensor
+        except Exception as e:
+            print(f"Error loading image from {image_path}: {str(e)}")
             return None
-
-        min_x = landmarks_df['x'].min()
-        max_x = landmarks_df['x'].max()
-        min_y = landmarks_df['y'].min()
-        max_y = landmarks_df['y'].max()
-
-        width = max_x - min_x
-        height = max_y - min_y
-
-        pad_x = width * padding_percent
-        pad_y = height * padding_percent
-
-        x1 = max(0, min_x - pad_x)
-        y1 = max(0, min_y - pad_y)
-        x2 = max_x + pad_x
-        y2 = max_y + pad_y
-
-        return (int(x1), int(y1), int(x2 - x1), int(y2 - y1))
-
-    def _resize_image(self, image: np.ndarray, target_size: int) -> Optional[np.ndarray]:
-        """Resize image to target size while maintaining aspect ratio."""
-        if image is None:
-            return None
-
-        h, w = image.shape[:2]
-        scale = min(target_size / h, target_size / w)
-        new_h = int(h * scale)
-        new_w = int(w * scale)
-
-        resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-
-        square = np.zeros((target_size, target_size, image.shape[2]), dtype=resized.dtype)
-        y_offset = (target_size - new_h) // 2
-        x_offset = (target_size - new_w) // 2
-
-        square[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = resized
-
-        return square

@@ -4,11 +4,11 @@ import pandas as pd
 from PIL import Image
 import cv2
 
-from core.face_detector import FaceDetector
-from core.image_processor import ImageProcessor
-from core.base_mesh import MediapipeBaseLandmarks
-from core.cpu_deformer import CPUDeformer
-from core.gpu_deformer import GPUDeformer
+from ..core.face_detector import FaceDetector
+from ..core.image_processor import ImageProcessor
+from ..core.base_mesh import MediapipeBaseLandmarks
+from ..core.cpu_deformer import CPUDeformer
+from ..core.gpu_deformer import GPUDeformer
 
 
 class FaceWrapper:

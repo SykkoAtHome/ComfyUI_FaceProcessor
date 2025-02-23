@@ -1,15 +1,14 @@
 from typing import Union, Optional
 
 import cv2
-import mediapipe as mp
 import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
 from pandas import DataFrame
 
-from core.lm_mapping import LandmarkMappings
-from core.resources.model_loader import ModelDlib, ModelMediaPipe
+from ..core.lm_mapping import LandmarkMappings
+from ..core.resources.model_loader import ModelDlib, ModelMediaPipe
 
 
 class FaceDetector:

@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image
 import torch
-from core.base_mesh import MediapipeBaseLandmarks
+from ..core.base_mesh import MediapipeBaseLandmarks
 
 
 class GPUDeformer:
