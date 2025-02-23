@@ -82,26 +82,16 @@ class FaceFitAndRestore:
             result_settings["workflow"] = "single_image"
             return result
 
-
         elif workflow == "image_sequence":
-
             # In Fit mode, we need image_sequence input
-
             if mode == "Fit":
-
                 if image_sequence is None or not image_sequence.get("frames"):
                     print("Error: Valid image_sequence is required for image_sequence workflow in Fit mode")
-
                     return None, {}, None, int(bbox_size)
-
                 sequence_settings = {
-
                     "workflow": "image_sequence",
-
                     "frames": {},
-
                     "current_frame": image_sequence.get("current_frame", 0)
-
                 }
 
                 selected_result = None
