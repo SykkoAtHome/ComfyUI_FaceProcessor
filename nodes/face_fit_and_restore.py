@@ -92,12 +92,10 @@ class FaceFitAndRestore:
                     fp_pipe=fp_pipe
                 )
             else:  # image_sequence
-                # W trybie Restore używamy current_frame z fp_pipe
                 current_frame = (fp_pipe.get("current_frame", 0) if mode == "Restore"
                                  else image_sequence.get("current_frame", 0))
                 fp_pipe["current_frame"] = current_frame
 
-                # W trybie Restore używamy liczby klatek z fp_pipe
                 if mode == "Restore":
                     total_frames = len(fp_pipe["frames"])
                     frames_to_process = {
@@ -114,15 +112,15 @@ class FaceFitAndRestore:
                 for frame_idx in range(total_frames):
                     print(f"Processing frame {frame_idx + 1}/{total_frames}")
 
-                    # Przygotowanie obrazu wejściowego
+
                     if mode == "Fit":
                         frame_path = frames_to_process[frame_idx]
-                        frame_image = self._load_image_from_path(frame_path)
+                        frame_image = self.image_processor.load_image_from_path(frame_path)
                         if frame_image is None:
                             print(f"Warning: Could not load frame {frame_idx}")
                             continue
                     else:  # Restore
-                        frame_image = image  # Ten sam obraz dla każdej klatki w trybie Restore
+                        frame_image = image
                         frame_path = None
 
                     # Process frame
@@ -339,14 +337,3 @@ class FaceFitAndRestore:
         else:
             shape = image.shape[:2]
         return torch.zeros((1, *shape), dtype=torch.float32)
-
-    def _load_image_from_path(self, image_path):
-        """Load and convert image from file path to tensor format."""
-        try:
-            image = Image.open(image_path)
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            return self.image_processor.pil_to_tensor(image)
-        except Exception as e:
-            print(f"Error loading image from {image_path}: {str(e)}")
-            return None

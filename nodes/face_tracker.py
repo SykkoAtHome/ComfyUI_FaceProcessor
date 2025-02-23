@@ -14,12 +14,14 @@ class FaceTracker:
         return {
             "required": {
                 "image": ("IMAGE",),
+                "fp_pipe": ("DICT",),
             }
         }
 
-    RETURN_TYPES = ("IMAGE",)
+    RETURN_TYPES = ("IMAGE", "DICT")
+    RETURN_NAMES = ("image", "fp_pipe")
     FUNCTION = "track_face"
     CATEGORY = "Face Processor"
 
-    def track_face(self, image):
-        return (image,)
+    def track_face(self, image, fp_pipe):
+        return image, fp_pipe
