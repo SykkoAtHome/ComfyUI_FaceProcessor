@@ -53,11 +53,11 @@ Main node for face detection and transformation operations.
 - `show_labels`: Toggle landmark index labels
 - `x_scale`: Horizontal scaling factor (0.5 to 1.0)
 - `y_transform`: Vertical translation (-0.5 to 0.5)
-- `processor_settings`: Optional settings dictionary
+- `fp_pipe`: Optional settings dictionary
 
 #### Outputs:
 - `image`: Processed image
-- `processor_settings`: Updated settings dictionary
+- `fp_pipe`: Updated settings dictionary
 
 ### FaceFitAndRestore
 Node for face cropping and restoration operations.
@@ -69,11 +69,11 @@ Node for face cropping and restoration operations.
 - `image`: Input image
 - `padding_percent`: Additional padding around face (0.0 to 1.0)
 - `bbox_size`: Output size for cropped face (512, 1024, or 2048)
-- `processor_settings`: Required for Restore mode
+- `fp_pipe`: Required for Restore mode
 
 #### Outputs:
 - `image`: Processed image
-- `processor_settings`: Updated settings dictionary
+- `fp_pipe`: Updated settings dictionary
 - `mask`: Mask indicating face region
 
 ## Technical Details
