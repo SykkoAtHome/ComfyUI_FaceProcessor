@@ -53,19 +53,19 @@ class FaceFitAndRestore:
 
         if mode == "Restore" and fp_pipe and "workflow" in fp_pipe:
             workflow = fp_pipe["workflow"]
-            print(f"Using workflow from processor settings: {workflow}")
+            print(f"Using workflow from pipe: {workflow}")
 
         if workflow == "single_image":
             if image is None:
                 print("Error: Image is required for single_image workflow")
-                return (None, {}, None, int(bbox_size))
+                return None, {}, None, int(bbox_size)
 
             if mode == "Fit":
                 result = self._fit(image, padding_percent, bbox_size)
             else:  # Restore
                 if fp_pipe is None:
-                    print("Error: Processor settings are required in Restore mode")
-                    return (None, {}, None, int(bbox_size))
+                    print("Error: fp_pipe is required in Restore mode")
+                    return None, {}, None, int(bbox_size)
                 result = self._restore(image, fp_pipe)
 
             # Add workflow info to settings
@@ -73,34 +73,24 @@ class FaceFitAndRestore:
             result_settings["workflow"] = "single_image"
             return result
 
-
         elif workflow == "image_sequence":
-
             if frames_data is None or not frames_data.get("frames"):
                 print("Error: Valid frames_data is required for image_sequence workflow")
-
-                return (None, {}, None, int(bbox_size))
+                return None, {}, None, int(bbox_size)
 
             sequence_settings = {
-
                 "workflow": "image_sequence",
-
                 "frames": {}
-
             }
 
             first_result = None
-
             total_frames = len(frames_data["frames"])
-
             print(f"Processing sequence of {total_frames} frames...")
 
             for frame_idx, frame_path in frames_data["frames"].items():
-
                 print(f"Processing frame {frame_idx + 1}/{total_frames}")
 
                 try:
-
                     # Load image from path
                     frame_tensor = self._load_image_from_path(frame_path)
                     if frame_tensor is None:
@@ -123,57 +113,53 @@ class FaceFitAndRestore:
 
                     sequence_settings["frames"][f"frame_{frame_idx}"] = result[1]
 
-
                 except Exception as e:
-
                     print(f"Error processing frame {frame_idx}: {str(e)}")
-
                     continue
 
             if first_result is None:
-                return (None, sequence_settings, None, int(bbox_size))
+                return None, sequence_settings, None, int(bbox_size)
 
-            return (first_result[0], sequence_settings, first_result[2], int(bbox_size))
+            return first_result[0], sequence_settings, first_result[2], int(bbox_size)
 
     def _fit(self, image, padding_percent, bbox_size):
         """Fit mode: Crop and process the face."""
-        image_np = self.image_processor._convert_to_numpy(image)
+        image_np = self.image_processor.convert_to_numpy(image)
         if image_np is None:
-            return (image, {}, self._create_empty_mask(image), int(bbox_size))
+            return image, {}, self._create_empty_mask(image), int(bbox_size)
 
         # Detect facial landmarks using mediapipe
         landmarks_df = self.face_detector.detect_landmarks_mp(image_np)
         if landmarks_df is None:
             print("No face detected, returning original image")
-            return (image, {}, self._create_empty_mask(image), int(bbox_size))
+            return image, {}, self._create_empty_mask(image), int(bbox_size)
 
         # Calculate rotation angle and rotate the image
         rotation_angle = self.image_processor.calculate_rotation_angle(landmarks_df)
         rotated_image, updated_landmarks = self.image_processor.rotate_image(image_np, landmarks_df)
         if rotated_image is None:
             print("Failed to rotate image, returning original")
-            return (image, {}, self._create_empty_mask(image), int(bbox_size))
+            return image, {}, self._create_empty_mask(image), int(bbox_size)
 
         # Crop face region to a square (1:1)
         cropped_face, crop_bbox = self.image_processor.crop_face_to_square(rotated_image, updated_landmarks,
                                                                            padding_percent)
         if cropped_face is None:
             print("Failed to crop face, returning original image")
-            return (image, {}, self._create_empty_mask(image), int(bbox_size))
+            return image, {}, self._create_empty_mask(image), int(bbox_size)
 
         # Resize to target size
         target_size = int(bbox_size)
         final_image = self.image_processor.resize_image(cropped_face, target_size)
         if final_image is None:
             print("Failed to resize image, returning original")
-            return (image, {}, self._create_empty_mask(image), int(bbox_size))
+            return image, {}, self._create_empty_mask(image), int(bbox_size)
 
-        # Convert back to float32 format expected by ComfyUI
-        final_image = final_image.astype(np.float32) / 255.0
-        final_image = torch.from_numpy(final_image).unsqueeze(0)
+        # Convert to tensor format
+        final_image = self.image_processor.numpy_to_tensor(final_image)
 
         # Save processor settings for restoration
-        processor_settings = {
+        fp_pipe = {
             "original_image_shape": image_np.shape,
             "rotation_angle": rotation_angle,
             "crop_bbox": crop_bbox,  # (x, y, w, h)
@@ -197,26 +183,26 @@ class FaceFitAndRestore:
             resized_mask = cv2.resize(cropped_mask, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
             mask = resized_mask
 
-        mask = torch.from_numpy(mask).unsqueeze(0)
-        return (final_image, processor_settings, mask, int(bbox_size))
+        mask = self.image_processor.convert_mask_to_tensor(mask)
+        return final_image, fp_pipe, mask, int(bbox_size)
 
-    def _restore(self, image, processor_settings):
+    def _restore(self, image, fp_pipe):
         """Restore mode: Restore the face to the original image."""
 
-        if processor_settings is None:
-            print("Error in restore: processor_settings is None")
-            return (image, {}, self._create_empty_mask(image))
+        if fp_pipe is None:
+            print("Error in restore: fp_pipe is None")
+            return image, {}, self._create_empty_mask(image)
 
-        processed_face_np = self.image_processor._convert_to_numpy(image)
+        processed_face_np = self.image_processor.convert_to_numpy(image)
         if processed_face_np is None:
             print("Error in restore: Failed to convert image to numpy array")
-            return (image, {}, self._create_empty_mask(image))
+            return image, {}, self._create_empty_mask(image)
 
-        original_image_shape = processor_settings.get("original_image_shape")
-        rotation_angle = processor_settings.get("rotation_angle")
-        crop_bbox = processor_settings.get("crop_bbox")
-        padding_percent = processor_settings.get("padding_percent")
-        bbox_size = processor_settings.get("bbox_size")
+        original_image_shape = fp_pipe.get("original_image_shape")
+        rotation_angle = fp_pipe.get("rotation_angle")
+        crop_bbox = fp_pipe.get("crop_bbox")
+        padding_percent = fp_pipe.get("padding_percent")
+        bbox_size = fp_pipe.get("bbox_size")
 
         # Debug info
         print(f"Restore settings: shape={original_image_shape}, rotation={rotation_angle}, bbox={crop_bbox}")
@@ -228,7 +214,7 @@ class FaceFitAndRestore:
             if not crop_bbox:
                 missing.append("crop_bbox")
             print(f"Error in restore: Missing required settings: {', '.join(missing)}")
-            return (image, {}, self._create_empty_mask(image))
+            return image, {}, self._create_empty_mask(image)
 
         try:
             restored_image = np.zeros(original_image_shape, dtype=np.uint8)
@@ -245,16 +231,15 @@ class FaceFitAndRestore:
                 restored_image = cv2.warpAffine(restored_image, rotation_matrix, (width, height),
                                                 flags=cv2.INTER_LANCZOS4)
 
-            restored_image = restored_image.astype(np.float32) / 255.0
-            restored_image = torch.from_numpy(restored_image).unsqueeze(0)
-
+            # Convert to tensor format
+            restored_image = self.image_processor.numpy_to_tensor(restored_image)
             mask = self._create_mask(original_image_shape, crop_bbox, rotation_angle)
 
-            return (restored_image, processor_settings, mask)
+            return restored_image, fp_pipe, mask
 
         except Exception as e:
             print(f"Error in restore: {str(e)}")
-            return (image, processor_settings, self._create_empty_mask(image))
+            return image, fp_pipe, self._create_empty_mask(image)
 
     def _create_mask(self, image_shape, crop_bbox, rotation_angle):
         """Create a mask for the face area."""
@@ -271,8 +256,7 @@ class FaceFitAndRestore:
             rotation_matrix = cv2.getRotationMatrix2D(center, -rotation_angle, 1.0)
             mask = cv2.warpAffine(mask, rotation_matrix, (width, height), flags=cv2.INTER_LINEAR)
 
-        mask = torch.from_numpy(mask).unsqueeze(0)
-        return mask
+        return self.image_processor.convert_mask_to_tensor(mask)
 
     def _create_empty_mask(self, image):
         """Create an empty mask with the same shape as the input image."""
@@ -286,9 +270,10 @@ class FaceFitAndRestore:
     def _load_image_from_path(self, image_path):
         """Load and convert image from file path to tensor format."""
         try:
-            frame_image = Image.open(image_path)
-            frame_tensor = torch.from_numpy(np.array(frame_image).astype(np.float32) / 255.0).unsqueeze(0)
-            return frame_tensor
+            image = Image.open(image_path)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            return self.image_processor.pil_to_tensor(image)
         except Exception as e:
             print(f"Error loading image from {image_path}: {str(e)}")
             return None

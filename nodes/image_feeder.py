@@ -1,8 +1,10 @@
 import os
+from typing import List, Dict, Tuple
+
 import torch
-import numpy as np
 from PIL import Image
-from typing import List, Dict, Union, Tuple
+
+from ..core.image_processor import ImageProcessor
 
 
 class ImageFeeder:
@@ -11,6 +13,7 @@ class ImageFeeder:
     def __init__(self):
         self.current_dir = None
         self.image_files = []
+        self.image_processor = ImageProcessor()
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -50,11 +53,8 @@ class ImageFeeder:
             if image.mode != 'RGB':
                 image = image.convert('RGB')
 
-            # Convert to numpy array and normalize
-            image_np = np.array(image).astype(np.float32) / 255.0
-
-            # Convert to torch tensor and add batch dimension
-            return torch.from_numpy(image_np).unsqueeze(0)
+            # Use ImageProcessor to convert to tensor
+            return self.image_processor.pil_to_tensor(image)
 
         except Exception as e:
             print(f"Error loading image {image_path}: {str(e)}")
@@ -135,7 +135,7 @@ class ImageFeeder:
             print("No images found in directory")
             # Return empty image and data
             empty_image = torch.zeros((1, 64, 64, 3))
-            return (empty_image, frames_data)
+            return empty_image, frames_data
 
         # Validate frame number
         max_frame = len(self.image_files) - 1
@@ -152,6 +152,6 @@ class ImageFeeder:
         if selected_frame is None:
             print(f"Failed to load frame {frame_number}")
             empty_image = torch.zeros((1, 64, 64, 3))
-            return (empty_image, frames_data)
+            return empty_image, frames_data
 
-        return (selected_frame, frames_data)
+        return selected_frame, frames_data

@@ -9,6 +9,7 @@ from pandas import DataFrame
 
 from ..core.lm_mapping import LandmarkMappings
 from ..core.resources.model_loader import ModelDlib, ModelMediaPipe
+from ..core.image_processor import ImageProcessor
 
 
 class FaceDetector:
@@ -17,7 +18,7 @@ class FaceDetector:
         # Models will be initialized on demand
         self.mediapipe_model = None
         self.dlib_model = None
-        self.insight_model = None
+        self.image_processor = ImageProcessor()
 
     def detect_landmarks(self,
                         image: Union[torch.Tensor, np.ndarray, Image.Image],
@@ -68,7 +69,7 @@ class FaceDetector:
             if self.mediapipe_model is None:
                 self.mediapipe_model = ModelMediaPipe()
 
-            image_np = self._convert_to_numpy(image)
+            image_np = self.image_processor.convert_to_numpy(image)
             if image_np is None:
                 return None
 
@@ -111,7 +112,7 @@ class FaceDetector:
                 self.dlib_model = ModelDlib()
 
             # Convert image to numpy format suitable for dlib
-            image_np = self._convert_to_numpy(image)
+            image_np = self.image_processor.convert_to_numpy(image)
             if image_np is None:
                 print("Failed to convert image for dlib processing")
                 return None
@@ -138,7 +139,7 @@ class FaceDetector:
                 'index': []
             }
 
-            # Extract landmarks (adding 1 to index to match dlib's 1-based indexing)
+            # Extract landmarks
             for i in range(68):
                 point = shape.part(i)
                 landmarks_data['x'].append(float(point.x))
@@ -223,27 +224,6 @@ class FaceDetector:
             print(f"Error during landmark interpolation: {str(e)}")
             return mp_landmarks
 
-    def _convert_to_numpy(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[np.ndarray]:
-        """Convert different image types to numpy array."""
-        if torch.is_tensor(image):
-            image = image.detach().cpu().numpy()
-            if len(image.shape) == 4:
-                image = image[0]
-            image = (image * 255).astype(np.uint8)
-        elif isinstance(image, Image.Image):
-            image = np.array(image)
-        elif isinstance(image, np.ndarray):
-            if image.dtype == np.float32 and image.max() <= 1.0:
-                image = (image * 255).astype(np.uint8)
-            if len(image.shape) == 4:
-                image = image[0]
-
-        if len(image.shape) == 2:
-            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-        elif image.shape[2] == 4:
-            image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
-
-        return image
 
     def __del__(self):
         """Clean up resources."""

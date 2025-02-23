@@ -1,9 +1,9 @@
 import torch
 import numpy as np
 import cv2
-
 from torch import Tensor
 from ..core.image_processor import ImageProcessor
+
 
 class HighPassFilter:
     """ComfyUI node implementing AE-style high-pass filter with dynamic histogram visualization"""
@@ -64,9 +64,9 @@ class HighPassFilter:
                   blend_opacity: float, input_black: int, input_white: int,
                   gamma: float, show_histogram: bool) -> tuple[Tensor, dict]:
         """Main processing function implementing the High Pass Filter"""
-        # Convert tensor to numpy array
-        np_img = image[0].numpy() * 255
-        np_img = np.clip(np_img, 0, 255).astype(np.uint8)
+
+        # Convert input tensor to numpy array
+        np_img = ImageProcessor.tensor_to_numpy(image)
 
         # 1. Apply box blur with multiple iterations
         kernel_size = 2 * blur_radius + 1
@@ -96,7 +96,7 @@ class HighPassFilter:
             result = np.vstack([result, hist_img])
 
         # Convert back to tensor format
-        result = torch.from_numpy(result.astype(np.float32) / 255.0).unsqueeze(0)
+        result = ImageProcessor.numpy_to_tensor(result)
 
         # Prepare settings dictionary
         settings = {
