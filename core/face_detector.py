@@ -53,7 +53,6 @@ class FaceDetector:
         if hasattr(self, 'mediapipe_model') and self.mediapipe_model:
             self.mediapipe_model.face_mesh.close()
 
-
     def detect_landmarks_mp(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[pd.DataFrame]:
         """
         Detect facial landmarks in the given image using MediaPipe.
@@ -74,15 +73,29 @@ class FaceDetector:
                 return None
 
             results = self.mediapipe_model.face_mesh.process(image_np)
-            if not results.multi_face_landmarks:
+
+            # Get face landmarks using getattr for better type checking
+            face_landmarks_list = getattr(results, 'multi_face_landmarks', None)
+            if not face_landmarks_list:
                 print("No face detected in the image")
                 return None
 
-            face_landmarks = results.multi_face_landmarks[0]
-            landmarks_data = {'x': [], 'y': [], 'index': []}
+            # Get first detected face
+            face_landmarks = face_landmarks_list[0]
+
+            # Prepare data structure for landmarks
+            landmarks_data = {
+                'x': [],
+                'y': [],
+                'index': []
+            }
+
+            # Get image dimensions for coordinate conversion
             image_height, image_width = image_np.shape[:2]
 
+            # Extract landmark coordinates
             for idx, landmark in enumerate(face_landmarks.landmark):
+                # Convert normalized coordinates to pixel coordinates
                 x = landmark.x * image_width
                 y = landmark.y * image_height
 
