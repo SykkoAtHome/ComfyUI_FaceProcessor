@@ -7,7 +7,7 @@ from typing import Union, Optional, Tuple
 
 class ImageProcessor:
     @staticmethod
-    def _convert_to_numpy(image: Union[torch.Tensor, np.ndarray, Image.Image]) -> np.ndarray:
+    def convert_to_numpy(image: Union[torch.Tensor, np.ndarray, Image.Image]) -> np.ndarray:
         """Convert different image types to numpy array."""
         if torch.is_tensor(image):
             image = image.detach().cpu().numpy()
@@ -59,7 +59,7 @@ class ImageProcessor:
         if image is None:
             return None
 
-        image_np = ImageProcessor._convert_to_numpy(image)
+        image_np = ImageProcessor.convert_to_numpy(image)
         h, w = image_np.shape[:2]
 
         # Determine the smaller dimension (height or width)
@@ -98,7 +98,7 @@ class ImageProcessor:
     @staticmethod
     def rotate_image(image: Union[torch.Tensor, np.ndarray, Image.Image], landmarks_df: pd.DataFrame) -> Tuple[Optional[np.ndarray], Optional[pd.DataFrame]]:
         """Rotate image based on facial landmarks."""
-        image_np = ImageProcessor._convert_to_numpy(image)
+        image_np = ImageProcessor.convert_to_numpy(image)
 
         if image_np is None or landmarks_df is None:
             return None, None

@@ -194,7 +194,7 @@ class FaceWrapper:
     def _wrap_mode(self, image_np, landmarks_df, width, height, device,
                    x_scale, y_transform, fp_pipe, mask_np):
         if not fp_pipe or 'target_lm' not in fp_pipe:
-            print("No landmarks found in processor settings")
+            print("No landmarks found in face processor pipe")
             output_image = torch.from_numpy(image_np.astype(np.float32) / 255.0).unsqueeze(0)
             output_mask = self._convert_mask_to_tensor(mask_np)
             return output_image, {}, output_mask
