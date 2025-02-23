@@ -34,7 +34,7 @@ class FaceFitAndRestore:
             },
             "optional": {
                 "image": ("IMAGE",),
-                "processor_settings": ("DICT", {
+                "fp_pipe": ("DICT", {
                     "default": None
                 }),
                 "frames_data": ("DICT", {
@@ -44,15 +44,15 @@ class FaceFitAndRestore:
         }
 
     RETURN_TYPES = ("IMAGE", "DICT", "MASK", "INT")
-    RETURN_NAMES = ("image", "processor_settings", "mask", "bbox_size")
+    RETURN_NAMES = ("image", "fp_pipe", "mask", "bbox_size")
     FUNCTION = "process_image"
     CATEGORY = "Face Processor"
 
     def process_image(self, mode, workflow, padding_percent=0.0, bbox_size="1024",
-                      image=None, processor_settings=None, frames_data=None):
+                      image=None, fp_pipe=None, frames_data=None):
 
-        if mode == "Restore" and processor_settings and "workflow" in processor_settings:
-            workflow = processor_settings["workflow"]
+        if mode == "Restore" and fp_pipe and "workflow" in fp_pipe:
+            workflow = fp_pipe["workflow"]
             print(f"Using workflow from processor settings: {workflow}")
 
         if workflow == "single_image":
@@ -63,10 +63,10 @@ class FaceFitAndRestore:
             if mode == "Fit":
                 result = self._fit(image, padding_percent, bbox_size)
             else:  # Restore
-                if processor_settings is None:
+                if fp_pipe is None:
                     print("Error: Processor settings are required in Restore mode")
                     return (None, {}, None, int(bbox_size))
-                result = self._restore(image, processor_settings)
+                result = self._restore(image, fp_pipe)
 
             # Add workflow info to settings
             result_settings = result[1]
@@ -110,7 +110,7 @@ class FaceFitAndRestore:
                         result = self._fit(frame_tensor, padding_percent, bbox_size)
                         result[1]["original_image_path"] = frame_path
                     elif mode == "Restore":
-                        frame_settings = processor_settings.get("frames", {}).get(f"frame_{frame_idx}")
+                        frame_settings = fp_pipe.get("frames", {}).get(f"frame_{frame_idx}")
                         if frame_settings is None:
                             print(f"Warning: No processor settings for frame {frame_idx}")
                             continue

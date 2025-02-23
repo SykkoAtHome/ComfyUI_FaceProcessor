@@ -138,13 +138,14 @@ normalized_face, settings = face_wrapper.detect_face(
 2. Process normalized face with your preferred method
 
 3. Restore face to original position:
+
 ```python
 # Wrap processed face back
 final_image, _ = face_wrapper.detect_face(
     image=processed_face,
     mode="Wrap",
     device="CUDA",
-    processor_settings=settings
+    fp_pipe=settings
 )
 ```
 
