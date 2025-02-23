@@ -60,6 +60,7 @@ class HighPassFilter:
     FUNCTION = "apply_hpf"
     CATEGORY = "Face Processor/Tools"
 
+    @staticmethod
     def apply_hpf(self, image: torch.Tensor, blur_radius: int, blur_iterations: int,
                   blend_opacity: float, input_black: int, input_white: int,
                   gamma: float, show_histogram: bool) -> tuple[Tensor, dict]:

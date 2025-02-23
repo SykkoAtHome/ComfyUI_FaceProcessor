@@ -51,19 +51,7 @@ class ImageProcessor:
         x2 = max_x + pad_x
         y2 = max_y + pad_y
 
-        return (int(x1), int(y1), int(x2 - x1), int(y2 - y1))
-
-    @staticmethod
-    def crop_face(image: Union[torch.Tensor, np.ndarray, Image.Image], landmarks_df: pd.DataFrame, padding_percent: float = 0.0) -> Optional[np.ndarray]:
-        """Crop face region from image based on landmarks."""
-        image_np = ImageProcessor._convert_to_numpy(image)
-        bbox = ImageProcessor.calculate_face_bbox(landmarks_df, padding_percent)
-
-        if bbox is None:
-            return None
-
-        x, y, w, h = bbox
-        return image_np[y:y + h, x:x + w]
+        return int(x1), int(y1), int(x2 - x1), int(y2 - y1)
 
     @staticmethod
     def resize_image(image: Union[torch.Tensor, np.ndarray, Image.Image], target_size: int) -> Optional[np.ndarray]:

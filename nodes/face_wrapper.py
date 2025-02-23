@@ -65,7 +65,7 @@ class FaceWrapper:
         if landmarks_df is None:
             print("No face detected")
             empty_mask = torch.zeros((1, height, width), dtype=torch.float32) if mask is not None else None
-            return (image, fp_pipe or {}, empty_mask)
+            return image, fp_pipe or {}, empty_mask
 
         # Handle different modes
         if mode == "Debug":
@@ -165,7 +165,7 @@ class FaceWrapper:
         output_mask = self._convert_mask_to_tensor(mask_np)
         landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
 
-        return (output_image, self._update_settings(fp_pipe, landmarks_data), output_mask)
+        return output_image, self._update_settings(fp_pipe, landmarks_data), output_mask
 
     def _unwrap_mode(self, image_np, landmarks_df, width, height, device,
                      x_scale, y_transform, fp_pipe, mask_np):
@@ -189,7 +189,7 @@ class FaceWrapper:
         output_image = torch.from_numpy(output_image).unsqueeze(0)
 
         landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
-        return (output_image, self._update_settings(fp_pipe, landmarks_data), warped_mask)
+        return output_image, self._update_settings(fp_pipe, landmarks_data), warped_mask
 
     def _wrap_mode(self, image_np, landmarks_df, width, height, device,
                    x_scale, y_transform, fp_pipe, mask_np):
@@ -197,7 +197,7 @@ class FaceWrapper:
             print("No landmarks found in processor settings")
             output_image = torch.from_numpy(image_np.astype(np.float32) / 255.0).unsqueeze(0)
             output_mask = self._convert_mask_to_tensor(mask_np)
-            return (output_image, {}, output_mask)
+            return output_image, {}, output_mask
 
         source_x = fp_pipe['target_lm']['x']
         source_y = fp_pipe['target_lm']['y']
@@ -221,7 +221,7 @@ class FaceWrapper:
         output_image = np.array(warped_image).astype(np.float32) / 255.0
         output_image = torch.from_numpy(output_image).unsqueeze(0)
 
-        return (output_image, fp_pipe, warped_mask)
+        return output_image, fp_pipe, warped_mask
 
     def _apply_warping(self, image, source_landmarks, target_landmarks, device):
         """Apply warping to image using selected device"""

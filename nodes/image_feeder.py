@@ -1,8 +1,10 @@
 import os
-import torch
+from typing import List, Dict, Tuple
+
 import numpy as np
+import torch
 from PIL import Image
-from typing import List, Dict, Union, Tuple
+from torch import Tensor
 
 
 class ImageFeeder:
@@ -33,7 +35,8 @@ class ImageFeeder:
     FUNCTION = "feed_images"
     CATEGORY = "Face Processor/Image"
 
-    def _load_image(self, image_path: str) -> torch.Tensor:
+    @staticmethod
+    def _load_image(image_path: str) -> Tensor | None:
         """
         Load an image from path and convert it to ComfyUI format
 
@@ -60,7 +63,8 @@ class ImageFeeder:
             print(f"Error loading image {image_path}: {str(e)}")
             return None
 
-    def _scan_directory(self, directory: str) -> List[str]:
+    @staticmethod
+    def _scan_directory(directory: str) -> List[str]:
         """
         Scan directory for image files
 
@@ -135,7 +139,7 @@ class ImageFeeder:
             print("No images found in directory")
             # Return empty image and data
             empty_image = torch.zeros((1, 64, 64, 3))
-            return (empty_image, frames_data)
+            return empty_image, frames_data
 
         # Validate frame number
         max_frame = len(self.image_files) - 1
@@ -152,6 +156,6 @@ class ImageFeeder:
         if selected_frame is None:
             print(f"Failed to load frame {frame_number}")
             empty_image = torch.zeros((1, 64, 64, 3))
-            return (empty_image, frames_data)
+            return empty_image, frames_data
 
-        return (selected_frame, frames_data)
+        return selected_frame, frames_data
