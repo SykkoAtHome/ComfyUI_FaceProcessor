@@ -32,7 +32,7 @@ class ImageFeeder:
         }
 
     RETURN_TYPES = ("IMAGE", "DICT")
-    RETURN_NAMES = ("image", "frames_data")
+    RETURN_NAMES = ("image", "image_sequence")
     FUNCTION = "feed_images"
     CATEGORY = "Face Processor/Image"
 
@@ -113,7 +113,7 @@ class ImageFeeder:
         Returns:
             Tuple containing:
             - Selected frame as tensor
-            - Dictionary with frames data
+            - Dictionary with image_sequence
         """
         # Check if directory changed
         if directory != self.current_dir:
@@ -122,7 +122,7 @@ class ImageFeeder:
             self.current_dir = directory
 
         # Prepare return data with frame to file mapping
-        frames_data = {
+        image_sequence = {
             "frames": {
                 idx: file_path
                 for idx, file_path in enumerate(self.image_files)
@@ -135,7 +135,7 @@ class ImageFeeder:
             print("No images found in directory")
             # Return empty image and data
             empty_image = torch.zeros((1, 64, 64, 3))
-            return empty_image, frames_data
+            return empty_image, image_sequence
 
         # Validate frame number
         max_frame = len(self.image_files) - 1
@@ -152,6 +152,6 @@ class ImageFeeder:
         if selected_frame is None:
             print(f"Failed to load frame {frame_number}")
             empty_image = torch.zeros((1, 64, 64, 3))
-            return empty_image, frames_data
+            return empty_image, image_sequence
 
-        return selected_frame, frames_data
+        return selected_frame, image_sequence

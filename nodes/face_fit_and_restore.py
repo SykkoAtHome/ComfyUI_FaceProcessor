@@ -37,7 +37,7 @@ class FaceFitAndRestore:
                 "fp_pipe": ("DICT", {
                     "default": None
                 }),
-                "frames_data": ("DICT", {
+                "image_sequence": ("DICT", {
                     "default": None
                 }),
             }
@@ -49,11 +49,23 @@ class FaceFitAndRestore:
     CATEGORY = "Face Processor"
 
     def process_image(self, mode, workflow, padding_percent=0.0, bbox_size="1024",
-                      image=None, fp_pipe=None, frames_data=None):
+                      image=None, fp_pipe=None, image_sequence=None):
 
-        if mode == "Restore" and fp_pipe and "workflow" in fp_pipe:
-            workflow = fp_pipe["workflow"]
-            print(f"Using workflow from pipe: {workflow}")
+
+        # Check if we should use workflow from fp_pipe in Restore mode
+        if mode == "Restore":
+            if fp_pipe is None:
+                print("Error: fp_pipe is required in Restore mode")
+                return None, {}, None, int(bbox_size)
+
+            if "workflow" in fp_pipe:
+                workflow = fp_pipe["workflow"]
+                print(f"Using workflow from pipe: {workflow}")
+
+            # Additional check for sequence restore
+            if workflow == "image_sequence" and "frames" not in fp_pipe:
+                print("Error: fp_pipe does not contain frames data required for image sequence restore")
+                return None, {}, None, int(bbox_size)
 
         if workflow == "single_image":
             if image is None:
@@ -63,9 +75,6 @@ class FaceFitAndRestore:
             if mode == "Fit":
                 result = self._fit(image, padding_percent, bbox_size)
             else:  # Restore
-                if fp_pipe is None:
-                    print("Error: fp_pipe is required in Restore mode")
-                    return None, {}, None, int(bbox_size)
                 result = self._restore(image, fp_pipe)
 
             # Add workflow info to settings
@@ -74,53 +83,67 @@ class FaceFitAndRestore:
             return result
 
         elif workflow == "image_sequence":
-            if frames_data is None or not frames_data.get("frames"):
-                print("Error: Valid frames_data is required for image_sequence workflow")
-                return None, {}, None, int(bbox_size)
+            # In Fit mode, we need image_sequence input
+            if mode == "Fit":
+                if image_sequence is None or not image_sequence.get("frames"):
+                    print("Error: Valid image_sequence is required for image_sequence workflow in Fit mode")
+                    return None, {}, None, int(bbox_size)
+                sequence_settings = {
+                    "workflow": "image_sequence",
+                    "frames": {},
+                    "current_frame": image_sequence.get("current_frame", 0)
+                }
 
-            sequence_settings = {
-                "workflow": "image_sequence",
-                "frames": {}
-            }
+                selected_result = None
+                total_frames = len(image_sequence["frames"])
+                print(f"Processing sequence of {total_frames} frames...")
+                print(f"Current frame index: {sequence_settings['current_frame']}")
+                for frame_idx, frame_path in image_sequence["frames"].items():
+                    print(f"Processing frame {frame_idx + 1}/{total_frames}")
+                    try:
+                        frame_tensor = self._load_image_from_path(frame_path)
 
-            first_result = None
-            total_frames = len(frames_data["frames"])
-            print(f"Processing sequence of {total_frames} frames...")
-
-            for frame_idx, frame_path in frames_data["frames"].items():
-                print(f"Processing frame {frame_idx + 1}/{total_frames}")
-
-                try:
-                    # Load image from path
-                    frame_tensor = self._load_image_from_path(frame_path)
-                    if frame_tensor is None:
-                        continue
-
-                    if mode == "Fit":
-                        result = self._fit(frame_tensor, padding_percent, bbox_size)
-                        result[1]["original_image_path"] = frame_path
-                    elif mode == "Restore":
-                        frame_settings = fp_pipe.get("frames", {}).get(f"frame_{frame_idx}")
-                        if frame_settings is None:
-                            print(f"Warning: No processor settings for frame {frame_idx}")
+                        if frame_tensor is None:
+                            print(f"Warning: Could not load frame {frame_idx} from {frame_path}")
                             continue
 
-                        print(f"Processing restore for frame {frame_idx} with settings: {frame_settings}")
-                        result = self._restore(frame_tensor, frame_settings)
+                        result = self._fit(frame_tensor, padding_percent, bbox_size)
 
-                    if first_result is None:
-                        first_result = result
+                        if result:  # Check if result was created successfully
+                            result[1]["original_image_path"] = frame_path
+                            sequence_settings["frames"][f"frame_{frame_idx}"] = result[1]
+                            if frame_idx == sequence_settings["current_frame"]:
+                                selected_result = result
 
-                    sequence_settings["frames"][f"frame_{frame_idx}"] = result[1]
+                    except Exception as e:
+                        print(f"Error processing frame {frame_idx}: {str(e)}")
+                        continue
 
-                except Exception as e:
-                    print(f"Error processing frame {frame_idx}: {str(e)}")
-                    continue
 
-            if first_result is None:
+            else:  # Restore mode
+                if image is None:
+                    print("Error: Input image is required for Restore mode")
+                    return None, {}, None, int(bbox_size)
+
+                current_frame = fp_pipe.get("current_frame", 0)
+                frame_settings = fp_pipe.get("frames", {}).get(f"frame_{current_frame}")
+
+                if frame_settings is None:
+                    print(f"Error: No processor settings for frame {current_frame}")
+                    return None, {}, None, int(bbox_size)
+                print(f"Processing restore for frame {current_frame} with settings: {frame_settings}")
+                result = self._restore(image, frame_settings)
+
+                if result is None:
+                    print(f"Error: Failed to restore frame {current_frame}")
+                    return None, fp_pipe, None, int(bbox_size)
+                return result[0], fp_pipe, result[2], int(bbox_size)
+
+            if selected_result is None:
+                print(f"Warning: Could not process current frame, using default empty result")
                 return None, sequence_settings, None, int(bbox_size)
 
-            return first_result[0], sequence_settings, first_result[2], int(bbox_size)
+            return selected_result[0], sequence_settings, selected_result[2], int(bbox_size)
 
     def _fit(self, image, padding_percent, bbox_size):
         """Fit mode: Crop and process the face."""
