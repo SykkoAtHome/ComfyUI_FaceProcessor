@@ -90,6 +90,7 @@ class FaceWrapper:
             if det_overlay is not None:
                 overlays.append(det_overlay)
 
+        # Get base landmarks
         base_landmarks = MediapipeBaseLandmarks.get_base_landmarks(
             (width, height), x_scale=x_scale, y_translation=y_transform
         )
@@ -117,12 +118,16 @@ class FaceWrapper:
 
         output_image = self.image_processor.numpy_to_tensor(result_image)
         output_mask = self.image_processor.convert_mask_to_tensor(mask_np)
-        landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
 
-        return output_image, self._update_pipe(fp_pipe, landmarks_data), output_mask
+        # Prepare and update landmarks data
+        landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
+        updated_pipe = self._update_pipe(fp_pipe, landmarks_data)
+
+        return output_image, updated_pipe, output_mask
 
     def _unwrap_mode(self, image_np, landmarks_df, width, height, device,
                      x_scale, y_transform, fp_pipe, mask_np):
+        # Get base landmarks
         base_landmarks = MediapipeBaseLandmarks.get_base_landmarks(
             (width, height), x_scale=x_scale, y_translation=y_transform
         )
@@ -141,8 +146,11 @@ class FaceWrapper:
 
         output_image = self.image_processor.pil_to_tensor(warped_image)
 
+        # Prepare and update landmarks data
         landmarks_data = self._prepare_landmarks_data(landmarks_df, base_landmarks)
-        return output_image, self._update_pipe(fp_pipe, landmarks_data), warped_mask
+        updated_pipe = self._update_pipe(fp_pipe, landmarks_data)
+
+        return output_image, updated_pipe, warped_mask
 
     def _wrap_mode(self, image_np, landmarks_df, width, height, device,
                    x_scale, y_transform, fp_pipe, mask_np):
@@ -152,12 +160,25 @@ class FaceWrapper:
             output_mask = self.image_processor.convert_mask_to_tensor(mask_np)
             return output_image, {}, output_mask
 
+        current_frame = fp_pipe.get("current_frame", 0)
+        frame_key = f"frame_{current_frame}"
+
+        # Check if we have required data
+        if frame_key not in fp_pipe["frames"] or "detected_lm" not in fp_pipe["frames"][frame_key]:
+            print(f"No detected landmarks found for frame {current_frame}")
+            output_image = self.image_processor.numpy_to_tensor(image_np)
+            output_mask = self.image_processor.convert_mask_to_tensor(mask_np)
+            return output_image, fp_pipe, output_mask
+
+        # Get source landmarks from target_lm at root level
         source_x = fp_pipe['target_lm']['x']
         source_y = fp_pipe['target_lm']['y']
         source_landmarks = np.column_stack((source_x, source_y))[:468]
 
-        detected_x = fp_pipe['detected_lm']['x']
-        detected_y = fp_pipe['detected_lm']['y']
+        # Get target landmarks from detected_lm in current frame
+        frame_data = fp_pipe["frames"][frame_key]
+        detected_x = frame_data['detected_lm']['x']
+        detected_y = frame_data['detected_lm']['y']
         target_landmarks = np.column_stack((detected_x, detected_y))[:468]
 
         # Process image
@@ -183,18 +204,64 @@ class FaceWrapper:
             return CPUDeformer.warp_face(image, source_landmarks, target_landmarks)
 
     def _prepare_landmarks_data(self, detected_df, target_lm):
-        return {
-            'detected_lm': {
-                'x': detected_df['x'].tolist(),
-                'y': detected_df['y'].tolist(),
-                'indices': detected_df['index'].tolist()
-            },
-            'target_lm': {
-                'x': target_lm[:, 0].tolist(),
-                'y': target_lm[:, 1].tolist(),
-                'indices': list(range(len(target_lm)))
-            }
+        """
+        Prepare landmarks data in the correct format for fp_pipe
+
+        Args:
+            detected_df: DataFrame with detected landmarks
+            target_lm: Target landmarks array
+
+        Returns:
+            dict: Landmarks data in the format compatible with fp_pipe
+        """
+        # Prepare detected landmarks data
+        detected_data = {
+            'x': detected_df['x'].tolist(),
+            'y': detected_df['y'].tolist(),
+            'indices': detected_df['index'].tolist()
         }
 
-    def _update_pipe(self, pipe, new_data):
-        return {**(pipe or {}), **new_data}
+        # Prepare target landmarks data
+        target_data = {
+            'x': target_lm[:, 0].tolist(),
+            'y': target_lm[:, 1].tolist(),
+            'indices': list(range(len(target_lm)))
+        }
+
+        return detected_data, target_data
+
+    def _update_pipe(self, pipe, landmarks_data):
+        """
+        Update fp_pipe with new landmarks data
+
+        Args:
+            pipe: Existing fp_pipe dictionary or None
+            landmarks_data: Tuple of (detected_landmarks, target_landmarks)
+
+        Returns:
+            dict: Updated fp_pipe structure
+        """
+        if pipe is None:
+            pipe = {
+                "workflow": "single_image",
+                "current_frame": 0,
+                "frames": {}
+            }
+
+        detected_lm, target_lm = landmarks_data
+
+        # Update target landmarks at the root level
+        pipe["target_lm"] = target_lm
+
+        # Update detected landmarks for the current frame
+        current_frame = pipe.get("current_frame", 0)
+        frame_key = f"frame_{current_frame}"
+
+        # Ensure the frame exists in the structure
+        if frame_key not in pipe["frames"]:
+            pipe["frames"][frame_key] = {}
+
+        # Update detected landmarks for the current frame
+        pipe["frames"][frame_key]["detected_lm"] = detected_lm
+
+        return pipe
