@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 
 from torch import Tensor
-from core.image_processor import ImageProcessor
+from ..core.image_processor import ImageProcessor
 
 class HighPassFilter:
     """ComfyUI node implementing AE-style high-pass filter with dynamic histogram visualization"""
