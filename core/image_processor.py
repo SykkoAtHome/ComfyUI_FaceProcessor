@@ -6,28 +6,6 @@ from PIL import Image
 from typing import Union, Optional, Tuple
 
 class ImageProcessor:
-    @staticmethod
-    def convert_to_numpy(image: Union[torch.Tensor, np.ndarray, Image.Image]) -> np.ndarray:
-        """Convert different image types to numpy array."""
-        if torch.is_tensor(image):
-            image = image.detach().cpu().numpy()
-            if len(image.shape) == 4:
-                image = image[0]
-            image = (image * 255).astype(np.uint8)
-        elif isinstance(image, Image.Image):
-            image = np.array(image)
-        elif isinstance(image, np.ndarray):
-            if image.dtype == np.float32 and image.max() <= 1.0:
-                image = (image * 255).astype(np.uint8)
-            if len(image.shape) == 4:
-                image = image[0]
-
-        if len(image.shape) == 2:
-            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-        elif image.shape[2] == 4:
-            image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
-
-        return image
 
     @staticmethod
     def calculate_face_bbox(landmarks_df: pd.DataFrame, padding_percent: float = 0.0) -> Optional[Tuple[int, int, int, int]]:
@@ -288,3 +266,197 @@ class ImageProcessor:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         return hist_img
+
+    # Image Converters
+    @staticmethod
+    def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
+        """Convert PyTorch tensor to numpy array.
+
+        Args:
+            tensor: Input tensor in format (B,H,W,C) or (B,C,H,W), values 0-1
+
+        Returns:
+            np.ndarray: RGB image (H,W,3), uint8 values 0-255
+        """
+        if tensor is None:
+            return None
+
+        # Handle different tensor formats
+        img = tensor.detach().cpu().numpy()
+        if len(img.shape) == 4:
+            img = img[0]  # Remove batch dimension
+
+        # Handle channel dimension if in (C,H,W) format
+        if img.shape[0] in [1, 3, 4]:
+            img = img.transpose(1, 2, 0)
+
+        # Handle single channel
+        if len(img.shape) == 2 or img.shape[2] == 1:
+            img = np.stack((img,) * 3, axis=-1)
+
+        # Handle RGBA
+        elif img.shape[2] == 4:
+            img = img[..., :3]
+
+        # Convert to uint8 if float
+        if img.dtype == np.float32 or img.dtype == np.float64:
+            img = (img * 255).clip(0, 255).astype(np.uint8)
+
+        return img
+
+    @staticmethod
+    def numpy_to_tensor(array: np.ndarray) -> torch.Tensor:
+        """Convert numpy array to PyTorch tensor.
+
+        Args:
+            array: RGB image (H,W,3), uint8 or float32
+
+        Returns:
+            torch.Tensor: (1,H,W,3) tensor, values 0-1
+        """
+        if array is None:
+            return None
+
+        # Convert to float32 if uint8
+        if array.dtype == np.uint8:
+            array = array.astype(np.float32) / 255.0
+
+        # Add batch dimension
+        tensor = torch.from_numpy(array).unsqueeze(0)
+        return tensor
+
+    @staticmethod
+    def pil_to_numpy(image: Image.Image) -> np.ndarray:
+        """Convert PIL image to numpy array.
+
+        Args:
+            image: PIL Image
+
+        Returns:
+            np.ndarray: RGB image (H,W,3), uint8 values 0-255
+        """
+        if image is None:
+            return None
+
+        # Convert to RGB if needed
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+
+        return np.array(image)
+
+    @staticmethod
+    def numpy_to_pil(array: np.ndarray) -> Image.Image:
+        """Convert numpy array to PIL image.
+
+        Args:
+            array: RGB image (H,W,3), uint8 or float32
+
+        Returns:
+            PIL.Image: RGB PIL image
+        """
+        if array is None:
+            return None
+
+        # Convert to uint8 if float
+        if array.dtype == np.float32 or array.dtype == np.float64:
+            array = (array * 255).clip(0, 255).astype(np.uint8)
+
+        return Image.fromarray(array)
+
+    @staticmethod
+    def tensor_to_pil(tensor: torch.Tensor) -> Image.Image:
+        """Convert PyTorch tensor to PIL image.
+
+        Args:
+            tensor: Input tensor in format (B,H,W,C), values 0-1
+
+        Returns:
+            PIL.Image: RGB PIL image
+        """
+        return ImageProcessor.numpy_to_pil(ImageProcessor.tensor_to_numpy(tensor))
+
+    @staticmethod
+    def pil_to_tensor(image: Image.Image) -> torch.Tensor:
+        """Convert PIL image to PyTorch tensor.
+
+        Args:
+            image: PIL Image
+
+        Returns:
+            torch.Tensor: (1,H,W,3) tensor, values 0-1
+        """
+        return ImageProcessor.numpy_to_tensor(ImageProcessor.pil_to_numpy(image))
+
+    @staticmethod
+    def convert_to_numpy(image: Union[torch.Tensor, np.ndarray, Image.Image]) -> np.ndarray:
+        """Universal converter to numpy array.
+
+        Args:
+            image: Input in any supported format
+
+        Returns:
+            np.ndarray: RGB image (H,W,3), uint8 values 0-255
+        """
+        if image is None:
+            return None
+
+        if torch.is_tensor(image):
+            return ImageProcessor.tensor_to_numpy(image)
+        elif isinstance(image, Image.Image):
+            return ImageProcessor.pil_to_numpy(image)
+        elif isinstance(image, np.ndarray):
+            # Handle grayscale
+            if len(image.shape) == 2:
+                image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+            # Handle RGBA
+            elif image.shape[2] == 4:
+                image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+            # Convert to uint8 if float
+            if image.dtype == np.float32 or image.dtype == np.float64:
+                image = (image * 255).clip(0, 255).astype(np.uint8)
+            return image
+        else:
+            raise ValueError(f"Unsupported image type: {type(image)}")
+
+    # Mask conversion methods
+    @staticmethod
+    def convert_mask_to_numpy(mask: Union[torch.Tensor, np.ndarray]) -> np.ndarray:
+        """Convert mask to numpy array.
+
+        Args:
+            mask: Input mask as tensor (1,H,W) or array
+
+        Returns:
+            np.ndarray: Mask as (H,W) uint8 array, values 0-255
+        """
+        if mask is None:
+            return None
+
+        if torch.is_tensor(mask):
+            mask = mask.detach().cpu().numpy()
+            if len(mask.shape) == 3:
+                mask = mask[0]  # Remove batch dimension
+
+        if mask.dtype == np.float32 or mask.dtype == np.float64:
+            mask = (mask * 255).clip(0, 255).astype(np.uint8)
+
+        return mask
+
+    @staticmethod
+    def convert_mask_to_tensor(mask: np.ndarray) -> torch.Tensor:
+        """Convert numpy mask to tensor.
+
+        Args:
+            mask: Input mask as (H,W) array
+
+        Returns:
+            torch.Tensor: Mask as (1,H,W) tensor, values 0-1
+        """
+        if mask is None:
+            return None
+
+        if mask.dtype == np.uint8:
+            mask = mask.astype(np.float32) / 255.0
+
+        return torch.from_numpy(mask).unsqueeze(0)
+

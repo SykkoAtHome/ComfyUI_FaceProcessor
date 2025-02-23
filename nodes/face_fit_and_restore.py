@@ -53,7 +53,7 @@ class FaceFitAndRestore:
 
         if mode == "Restore" and fp_pipe and "workflow" in fp_pipe:
             workflow = fp_pipe["workflow"]
-            print(f"Using workflow from face processor pipe: {workflow}")
+            print(f"Using workflow from pipe: {workflow}")
 
         if workflow == "single_image":
             if image is None:
@@ -64,7 +64,7 @@ class FaceFitAndRestore:
                 result = self._fit(image, padding_percent, bbox_size)
             else:  # Restore
                 if fp_pipe is None:
-                    print("Error: Processor settings are required in Restore mode")
+                    print("Error: fp_pipe is required in Restore mode")
                     return None, {}, None, int(bbox_size)
                 result = self._restore(image, fp_pipe)
 
@@ -73,34 +73,24 @@ class FaceFitAndRestore:
             result_settings["workflow"] = "single_image"
             return result
 
-
         elif workflow == "image_sequence":
-
             if frames_data is None or not frames_data.get("frames"):
                 print("Error: Valid frames_data is required for image_sequence workflow")
-
                 return None, {}, None, int(bbox_size)
 
             sequence_settings = {
-
                 "workflow": "image_sequence",
-
                 "frames": {}
-
             }
 
             first_result = None
-
             total_frames = len(frames_data["frames"])
-
             print(f"Processing sequence of {total_frames} frames...")
 
             for frame_idx, frame_path in frames_data["frames"].items():
-
                 print(f"Processing frame {frame_idx + 1}/{total_frames}")
 
                 try:
-
                     # Load image from path
                     frame_tensor = self._load_image_from_path(frame_path)
                     if frame_tensor is None:
@@ -112,7 +102,7 @@ class FaceFitAndRestore:
                     elif mode == "Restore":
                         frame_settings = fp_pipe.get("frames", {}).get(f"frame_{frame_idx}")
                         if frame_settings is None:
-                            print(f"Warning: No face processor pipe for frame {frame_idx}")
+                            print(f"Warning: No processor settings for frame {frame_idx}")
                             continue
 
                         print(f"Processing restore for frame {frame_idx} with settings: {frame_settings}")
@@ -123,11 +113,8 @@ class FaceFitAndRestore:
 
                     sequence_settings["frames"][f"frame_{frame_idx}"] = result[1]
 
-
                 except Exception as e:
-
                     print(f"Error processing frame {frame_idx}: {str(e)}")
-
                     continue
 
             if first_result is None:
@@ -168,12 +155,11 @@ class FaceFitAndRestore:
             print("Failed to resize image, returning original")
             return image, {}, self._create_empty_mask(image), int(bbox_size)
 
-        # Convert back to float32 format expected by ComfyUI
-        final_image = final_image.astype(np.float32) / 255.0
-        final_image = torch.from_numpy(final_image).unsqueeze(0)
+        # Convert to tensor format
+        final_image = self.image_processor.numpy_to_tensor(final_image)
 
-        # Save face processor pipe for restoration
-        processor_settings = {
+        # Save processor settings for restoration
+        fp_pipe = {
             "original_image_shape": image_np.shape,
             "rotation_angle": rotation_angle,
             "crop_bbox": crop_bbox,  # (x, y, w, h)
@@ -197,14 +183,14 @@ class FaceFitAndRestore:
             resized_mask = cv2.resize(cropped_mask, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
             mask = resized_mask
 
-        mask = torch.from_numpy(mask).unsqueeze(0)
-        return final_image, processor_settings, mask, int(bbox_size)
+        mask = self.image_processor.convert_mask_to_tensor(mask)
+        return final_image, fp_pipe, mask, int(bbox_size)
 
     def _restore(self, image, fp_pipe):
         """Restore mode: Restore the face to the original image."""
 
         if fp_pipe is None:
-            print("Error in restore: processor_settings is None")
+            print("Error in restore: fp_pipe is None")
             return image, {}, self._create_empty_mask(image)
 
         processed_face_np = self.image_processor.convert_to_numpy(image)
@@ -245,9 +231,8 @@ class FaceFitAndRestore:
                 restored_image = cv2.warpAffine(restored_image, rotation_matrix, (width, height),
                                                 flags=cv2.INTER_LANCZOS4)
 
-            restored_image = restored_image.astype(np.float32) / 255.0
-            restored_image = torch.from_numpy(restored_image).unsqueeze(0)
-
+            # Convert to tensor format
+            restored_image = self.image_processor.numpy_to_tensor(restored_image)
             mask = self._create_mask(original_image_shape, crop_bbox, rotation_angle)
 
             return restored_image, fp_pipe, mask
@@ -271,8 +256,7 @@ class FaceFitAndRestore:
             rotation_matrix = cv2.getRotationMatrix2D(center, -rotation_angle, 1.0)
             mask = cv2.warpAffine(mask, rotation_matrix, (width, height), flags=cv2.INTER_LINEAR)
 
-        mask = torch.from_numpy(mask).unsqueeze(0)
-        return mask
+        return self.image_processor.convert_mask_to_tensor(mask)
 
     def _create_empty_mask(self, image):
         """Create an empty mask with the same shape as the input image."""
@@ -286,9 +270,10 @@ class FaceFitAndRestore:
     def _load_image_from_path(self, image_path):
         """Load and convert image from file path to tensor format."""
         try:
-            frame_image = Image.open(image_path)
-            frame_tensor = torch.from_numpy(np.array(frame_image).astype(np.float32) / 255.0).unsqueeze(0)
-            return frame_tensor
+            image = Image.open(image_path)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            return self.image_processor.pil_to_tensor(image)
         except Exception as e:
             print(f"Error loading image from {image_path}: {str(e)}")
             return None

@@ -1,10 +1,10 @@
 import os
 from typing import List, Dict, Tuple
 
-import numpy as np
 import torch
 from PIL import Image
-from torch import Tensor
+
+from ..core.image_processor import ImageProcessor
 
 
 class ImageFeeder:
@@ -13,6 +13,7 @@ class ImageFeeder:
     def __init__(self):
         self.current_dir = None
         self.image_files = []
+        self.image_processor = ImageProcessor()
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -35,8 +36,7 @@ class ImageFeeder:
     FUNCTION = "feed_images"
     CATEGORY = "Face Processor/Image"
 
-    @staticmethod
-    def _load_image(image_path: str) -> Tensor | None:
+    def _load_image(self, image_path: str) -> torch.Tensor:
         """
         Load an image from path and convert it to ComfyUI format
 
@@ -53,18 +53,14 @@ class ImageFeeder:
             if image.mode != 'RGB':
                 image = image.convert('RGB')
 
-            # Convert to numpy array and normalize
-            image_np = np.array(image).astype(np.float32) / 255.0
-
-            # Convert to torch tensor and add batch dimension
-            return torch.from_numpy(image_np).unsqueeze(0)
+            # Use ImageProcessor to convert to tensor
+            return self.image_processor.pil_to_tensor(image)
 
         except Exception as e:
             print(f"Error loading image {image_path}: {str(e)}")
             return None
 
-    @staticmethod
-    def _scan_directory(directory: str) -> List[str]:
+    def _scan_directory(self, directory: str) -> List[str]:
         """
         Scan directory for image files
 
