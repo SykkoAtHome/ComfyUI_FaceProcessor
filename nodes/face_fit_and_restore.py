@@ -137,7 +137,8 @@ class FaceFitAndRestore:
                         padding_percent=padding_percent,
                         bbox_size=bbox_size,
                         fp_pipe=fp_pipe,
-                        original_path=frame_path if mode == "Fit" else None
+                        original_path=frame_path if mode == "Fit" else None,
+                        image_sequence=image_sequence
                     )
 
                     # Store results for both current frame and batch processing
@@ -183,7 +184,8 @@ class FaceFitAndRestore:
             traceback.print_exc()
             return None, fp_pipe, None, int(bbox_size)
 
-    def _process_frame(self, mode, image, frame_number, padding_percent, bbox_size, fp_pipe, original_path=None):
+    def _process_frame(self, mode, image, frame_number, padding_percent, bbox_size, fp_pipe, original_path=None,
+                       image_sequence=None):
         """Process a single frame in either Fit or Restore mode."""
         try:
             frame_key = f"frame_{frame_number}"
@@ -210,22 +212,26 @@ class FaceFitAndRestore:
                     if original_path:
                         frame_data["original_image_path"] = original_path
 
+                    # Add original frame index if available in image_sequence
+                    if isinstance(image_sequence, dict) and "original_indices" in image_sequence:
+                        frame_data["original_frame_index"] = image_sequence["original_indices"].get(frame_number)
+
                     # Store frame data
                     fp_pipe["frames"][frame_key] = frame_data
 
-            else:  # Restore mode
-                frame_settings = fp_pipe["frames"].get(frame_key)
-                if frame_settings is None:
-                    print(f"Error: No settings found for frame {frame_number}")
-                    return None, fp_pipe, None, int(bbox_size)
+                else:  # Restore mode
+                    frame_settings = fp_pipe["frames"].get(frame_key)
+                    if frame_settings is None:
+                        print(f"Error: No settings found for frame {frame_number}")
+                        return None, fp_pipe, None, int(bbox_size)
 
-                result = self._restore(image, frame_settings)
-                if result is None:
-                    return None, fp_pipe, None, int(bbox_size)
+                    result = self._restore(image, frame_settings)
+                    if result is None:
+                        return None, fp_pipe, None, int(bbox_size)
 
-                result_image, result_mask = result[0], result[2]
+                    result_image, result_mask = result[0], result[2]
 
-            return result_image, fp_pipe, result_mask, int(bbox_size)
+                return result_image, fp_pipe, result_mask, int(bbox_size)
 
         except Exception as e:
             print(f"Error processing frame {frame_number}: {str(e)}")
