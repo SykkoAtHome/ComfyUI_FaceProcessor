@@ -219,18 +219,23 @@ class FaceFitAndRestore:
                     # Store frame data
                     fp_pipe["frames"][frame_key] = frame_data
 
-                else:  # Restore mode
-                    frame_settings = fp_pipe["frames"].get(frame_key)
-                    if frame_settings is None:
-                        print(f"Error: No settings found for frame {frame_number}")
-                        return None, fp_pipe, None, int(bbox_size)
+            else:  # Restore mode
+                frame_settings = fp_pipe["frames"].get(frame_key)
+                if frame_settings is None:
+                    print(f"Error: No settings found for frame {frame_number}")
+                    return None, fp_pipe, None, int(bbox_size)
 
-                    result = self._restore(image, frame_settings)
-                    if result is None:
-                        return None, fp_pipe, None, int(bbox_size)
+                result = self._restore(image, frame_settings)
+                if result is None:
+                    print(f"Error: Restore operation failed for frame {frame_number}")
+                    return None, fp_pipe, None, int(bbox_size)
 
-                    result_image, result_mask = result[0], result[2]
+                result_image, result_mask = result
 
+            # Return results for both Fit and Restore modes
+            if mode == "Fit":
+                return result_image, fp_pipe, result_mask, int(bbox_size)
+            else:
                 return result_image, fp_pipe, result_mask, int(bbox_size)
 
         except Exception as e:
@@ -306,6 +311,7 @@ class FaceFitAndRestore:
             # Convert input image to numpy
             processed_face_np = self.image_processor.convert_to_numpy(image)
             if processed_face_np is None:
+                print("Error: Failed to convert input image to numpy array")
                 return None
 
             # Get settings
@@ -340,10 +346,12 @@ class FaceFitAndRestore:
             # Create mask
             mask = self._create_mask(original_shape, (x1, y1, w, h), rotation_angle)
 
-            return restored_image, frame_settings, mask
+            return restored_image, mask
 
         except Exception as e:
             print(f"Error in restore: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _create_mask(self, image_shape, crop_bbox, rotation_angle):
