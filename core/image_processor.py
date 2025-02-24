@@ -460,3 +460,16 @@ class ImageProcessor:
 
         return torch.from_numpy(mask).unsqueeze(0)
 
+    # Loaders
+    @staticmethod
+    def load_image_from_path(image_path):
+        """Load and convert image from file path to tensor format."""
+        try:
+            image = Image.open(image_path)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            return ImageProcessor.pil_to_tensor(image)
+        except Exception as e:
+            print(f"Error loading image from {image_path}: {str(e)}")
+            return None
+

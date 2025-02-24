@@ -150,28 +150,11 @@ class LandmarkMappings:
             print(f"Error generating control points: {str(e)}")
             return None
 
-    @classmethod
-    def get_feature_pairs(cls) -> Dict[str, List[Tuple[int, int]]]:
-        """Get the raw landmark pair mappings."""
-        return cls.LANDMARKS_PAIRS
-
-    @classmethod
-    def get_mediapipe_indices(cls) -> List[int]:
-        """Get list of all MediaPipe landmark indices used in mapping."""
-        mp_indices = []
-        for pairs in cls.LANDMARKS_PAIRS.values():
-            mp_indices.extend([pair[0] for pair in pairs])
-        # Add virtual points
-        mp_indices.extend([int(idx) for idx in cls.VIRTUAL_PAIRS.keys()])
-        return sorted(set(mp_indices))
-
-    @classmethod
-    def get_dlib_indices(cls) -> List[int]:
-        """Get list of all Dlib landmark indices used in mapping."""
-        dlib_indices = []
-        for pairs in cls.LANDMARKS_PAIRS.values():
-            dlib_indices.extend([pair[1] for pair in pairs])
-        # Add indices from virtual pairs
-        for dlib_idx1, dlib_idx2 in cls.VIRTUAL_PAIRS.values():
-            dlib_indices.extend([dlib_idx1, dlib_idx2])
-        return sorted(set(dlib_indices))
+    # TODO: filter_trackers()
+    def filter_trackers(self, distance):
+        """
+        return list of base mediapipe landmarks ids as a list of trackers to use for cv2.goodFeaturesToTrack
+        based on given distance
+        """
+        trackers = []
+        return trackers
