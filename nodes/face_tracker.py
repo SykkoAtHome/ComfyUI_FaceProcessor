@@ -137,8 +137,7 @@ class FaceTracker:
                 landmark_id = int(row['index'])
                 results[landmark_id] = {
                     "x": float(row['x']),
-                    "y": float(row['y']),
-                    "confidence": 1.0  # MediaPipe doesn't provide per-landmark confidence
+                    "y": float(row['y'])
                 }
 
             return results
