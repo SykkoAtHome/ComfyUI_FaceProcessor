@@ -460,6 +460,74 @@ class ImageProcessor:
 
         return torch.from_numpy(mask).unsqueeze(0)
 
+    @staticmethod
+    def generate_face_mask(image_size: tuple, landmarks_df: pd.DataFrame) -> np.ndarray:
+        """
+        Generate a binary mask covering all facial landmarks using the convex hull algorithm.
+
+        Args:
+            image_size: Tuple (width, height) of the target mask.
+            landmarks_df: DataFrame containing landmark coordinates with columns 'x', 'y'.
+
+        Returns:
+            numpy.ndarray: Binary mask as a single-channel array (values 0 or 1, dtype float32).
+        """
+        if not isinstance(image_size, tuple) or len(image_size) != 2:
+            raise ValueError("image_size must be a tuple (width, height).")
+
+        if not isinstance(landmarks_df, pd.DataFrame) or landmarks_df.empty:
+            print("No valid landmarks provided for mask generation.")
+            return np.zeros((image_size[1], image_size[0]), dtype=np.float32)
+
+        try:
+            width, height = image_size
+            mask = np.zeros((height, width), dtype=np.uint8)
+
+            # Extract valid points and ensure they are within bounds
+            points = landmarks_df[['x', 'y']].to_numpy(dtype=np.int32)
+            valid_mask = (0 <= points[:, 0]) & (points[:, 0] < width) & (0 <= points[:, 1]) & (points[:, 1] < height)
+            valid_points = points[valid_mask]
+
+            if valid_points.shape[0] < 3:
+                print(f"Not enough valid landmarks for mask generation (found {valid_points.shape[0]}).")
+                return mask.astype(np.float32)
+
+            # Generate convex hull and fill the mask
+            hull = cv2.convexHull(valid_points)
+            cv2.fillConvexPoly(mask, hull, color=1)
+
+            return mask.astype(np.float32)
+
+        except Exception as e:
+            print(f"Error generating face mask: {e}")
+            return np.zeros((image_size[1], image_size[0]), dtype=np.float32)
+
+    @staticmethod
+    def mask_interpolation(prev_mask: np.ndarray, next_mask: np.ndarray) -> np.ndarray:
+        """
+        Interpolate between two masks to create a new mask.
+
+        Args:
+            prev_mask: Previous mask as numpy array (values 0-1)
+            next_mask: Next mask as numpy array (values 0-1)
+
+        Returns:
+            numpy.ndarray: Interpolated mask with values normalized to 0 or 1
+        """
+        if prev_mask is None or next_mask is None:
+            raise ValueError("Both masks must be provided for interpolation")
+
+        if prev_mask.shape != next_mask.shape:
+            raise ValueError(f"Mask shapes don't match: {prev_mask.shape} vs {next_mask.shape}")
+
+        # Create average mask by interpolating values
+        interpolated = (prev_mask + next_mask) / 2
+
+        # Normalize to binary mask (any value > 0 becomes 1)
+        binary_mask = (interpolated > 0).astype(np.float32)
+
+        return binary_mask
+
     # Loaders
     @staticmethod
     def load_image_from_path(image_path):
@@ -472,4 +540,6 @@ class ImageProcessor:
         except Exception as e:
             print(f"Error loading image from {image_path}: {str(e)}")
             return None
+
+
 
