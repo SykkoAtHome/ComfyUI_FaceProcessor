@@ -41,9 +41,6 @@ class FaceFitAndRestore:
                 "fp_pipe": ("DICT", {
                     "default": None
                 }),
-                "image_sequence": ("DICT", {
-                    "default": None
-                }),
             }
         }
 
@@ -53,7 +50,7 @@ class FaceFitAndRestore:
     CATEGORY = "Face Processor"
 
     def process_image(self, mode, workflow, output_mode, padding_percent=0.0, bbox_size="1024",
-                      image=None, fp_pipe=None, image_sequence=None):
+                      image=None, fp_pipe=None):
         """Process images in either Fit or Restore mode with unified fp_pipe structure."""
         # Import tqdm for progress bar
         from tqdm import tqdm
@@ -63,8 +60,8 @@ class FaceFitAndRestore:
             print("Error: Image is required for single_image workflow and Restore mode")
             return None, fp_pipe, None, int(bbox_size)
 
-        if workflow == "image_sequence" and mode == "Fit" and (not image_sequence or "frames" not in image_sequence):
-            print("Error: Valid image sequence data is required for Fit mode")
+        if workflow == "image_sequence" and mode == "Fit" and (not fp_pipe or "frames" not in fp_pipe):
+            print("Error: Valid fp_pipe data is required for Fit mode in image_sequence workflow")
             return None, fp_pipe, None, int(bbox_size)
 
         if mode == "Restore" and (not fp_pipe or "frames" not in fp_pipe):
@@ -74,12 +71,13 @@ class FaceFitAndRestore:
         # Initialize fp_pipe if None
         if fp_pipe is None:
             fp_pipe = {
-                "workflow": workflow,
                 "current_frame": 0,
                 "padding_percent": padding_percent,
                 "target_lm": {},
                 "frames": {}
             }
+        else:
+            fp_pipe["padding_percent"] = padding_percent
 
         try:
             if workflow == "single_image":
@@ -92,8 +90,7 @@ class FaceFitAndRestore:
                     fp_pipe=fp_pipe
                 )
             else:  # image_sequence
-                current_frame = (fp_pipe.get("current_frame", 0) if mode == "Restore"
-                                 else image_sequence.get("current_frame", 0))
+                current_frame = fp_pipe.get("current_frame", 0)
                 fp_pipe["current_frame"] = current_frame
 
                 if mode == "Restore":
@@ -102,8 +99,14 @@ class FaceFitAndRestore:
                         idx: None for idx in range(total_frames)
                     }
                 else:  # Fit mode
-                    total_frames = len(image_sequence["frames"])
-                    frames_to_process = image_sequence["frames"]
+                    total_frames = len(fp_pipe["frames"])
+                    frames_to_process = {}
+
+                    # Przebudowujemy frames_to_process aby zawierało indeksy i ścieżki z fp_pipe
+                    for i in range(total_frames):
+                        frame_key = f"frame_{i}"
+                        if frame_key in fp_pipe["frames"]:
+                            frames_to_process[i] = fp_pipe["frames"][frame_key].get("original_image_path")
 
                 results = {}
                 current_frame_result = None
@@ -112,7 +115,7 @@ class FaceFitAndRestore:
                 for frame_idx in tqdm(range(total_frames), desc="Processing frames", unit="frame"):
                     # Handle frame image based on mode
                     if mode == "Fit":
-                        frame_path = frames_to_process[frame_idx]
+                        frame_path = frames_to_process.get(frame_idx)
                         frame_image = None  # Let _process_frame load the image
                     else:  # Restore
                         # Handle potential batch input
@@ -134,8 +137,7 @@ class FaceFitAndRestore:
                         padding_percent=padding_percent,
                         bbox_size=bbox_size,
                         fp_pipe=fp_pipe,
-                        original_path=frame_path if mode == "Fit" else None,
-                        image_sequence=image_sequence
+                        original_path=frame_path if mode == "Fit" else None
                     )
 
                     # Store results for both current frame and batch processing
@@ -181,8 +183,7 @@ class FaceFitAndRestore:
             traceback.print_exc()
             return None, fp_pipe, None, int(bbox_size)
 
-    def _process_frame(self, mode, image, frame_number, padding_percent, bbox_size, fp_pipe, original_path=None,
-                       image_sequence=None):
+    def _process_frame(self, mode, image, frame_number, padding_percent, bbox_size, fp_pipe, original_path=None):
         """Process a single frame in either Fit or Restore mode."""
         try:
             frame_key = f"frame_{frame_number}"
@@ -216,9 +217,9 @@ class FaceFitAndRestore:
                     if original_path:
                         frame_data["original_image_path"] = original_path
 
-                    # Add original frame index if available in image_sequence
-                    if isinstance(image_sequence, dict) and "original_indices" in image_sequence:
-                        frame_data["original_frame_index"] = image_sequence["original_indices"].get(frame_number)
+                    # Add original frame index if available in fp_pipe
+                    if frame_key in fp_pipe["frames"] and "original_frame_index" in fp_pipe["frames"][frame_key]:
+                        frame_data["original_frame_index"] = fp_pipe["frames"][frame_key]["original_frame_index"]
 
                     # Store frame data
                     fp_pipe["frames"][frame_key] = frame_data

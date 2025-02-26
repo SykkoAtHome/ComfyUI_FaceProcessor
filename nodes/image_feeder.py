@@ -23,7 +23,7 @@ class ImageFeeder:
                     "default": "",
                     "multiline": False
                 }),
-                "frame_number": ("INT", {
+                "current_frame": ("INT", {
                     "default": 0,
                     "min": 0,
                     "step": 1
@@ -44,7 +44,7 @@ class ImageFeeder:
         }
 
     RETURN_TYPES = ("IMAGE", "DICT")
-    RETURN_NAMES = ("image", "image_sequence")
+    RETURN_NAMES = ("image", "fp_pipe")
     FUNCTION = "feed_images"
     CATEGORY = "Face Processor/Image"
 
@@ -114,21 +114,21 @@ class ImageFeeder:
 
         return image_files
 
-    def feed_images(self, directory: str, frame_number: int, number_of_frames: int = 0, skip_first_frames: int = 0) -> \
-    Tuple[torch.Tensor, Dict]:
+    def feed_images(self, directory: str, current_frame: int, number_of_frames: int = 0, skip_first_frames: int = 0) -> \
+            Tuple[torch.Tensor, Dict]:
         """
         Main processing function
 
         Args:
             directory: Path to images directory
-            frame_number: Index of frame to return
+            current_frame: Index of frame to return
             number_of_frames: Number of frames to process (0 = all frames)
             skip_first_frames: Number of frames to skip from the beginning
 
         Returns:
             Tuple containing:
             - Selected frame as tensor
-            - Dictionary with image_sequence
+            - Dictionary with fp_pipe structure
         """
         # Check if directory changed
         if directory != self.current_dir:
@@ -141,7 +141,7 @@ class ImageFeeder:
             print("No images found in directory")
             # Return empty image and data
             empty_image = torch.zeros((1, 64, 64, 3))
-            return empty_image, {"frames": {}, "current_frame": 0}
+            return empty_image, {"current_frame": 0, "frames": {}}
 
         # Calculate frame ranges
         total_available_frames = len(self.image_files)
@@ -155,40 +155,40 @@ class ImageFeeder:
 
         # Prepare frame mapping with sequential indices starting from 0
         frames_dict = {}
-        file_mapping = {}  # Store original indices for debug purposes
 
         for new_idx, original_idx in enumerate(range(start_frame, end_frame)):
-            frames_dict[new_idx] = self.image_files[original_idx]
-            file_mapping[new_idx] = original_idx  # For debugging
+            frame_key = f"frame_{new_idx}"
+            frames_dict[frame_key] = {
+                "original_frame_index": original_idx,
+                "original_image_path": self.image_files[original_idx]
+            }
 
         # Print debug info
         print(f"Processing frames {start_frame} to {end_frame - 1}")
         print(f"Remapped to indices 0 to {len(frames_dict) - 1}")
 
-        # Prepare return data
-        image_sequence = {
-            "frames": frames_dict,
-            "current_frame": min(frame_number, len(frames_dict) - 1),
-            "original_indices": file_mapping  # Optional, for debugging
+        # Validate frame number
+        if current_frame >= len(frames_dict):
+            current_frame = len(frames_dict) - 1
+            print(f"Frame number too high, using last available frame: {current_frame}")
+        elif current_frame < 0:
+            current_frame = 0
+            print(f"Frame number too low, using first available frame: {current_frame}")
+
+        # Prepare return data in fp_pipe format
+        fp_pipe = {
+            "current_frame": current_frame,
+            "frames": frames_dict
         }
 
-        # Validate frame number
-        if frame_number >= len(frames_dict):
-            frame_number = len(frames_dict) - 1
-            print(f"Frame number too high, using last available frame: {frame_number}")
-        elif frame_number < 0:
-            frame_number = 0
-            print(f"Frame number too low, using first available frame: {frame_number}")
-
-        # Update current frame in sequence data
-        image_sequence["current_frame"] = frame_number
-
         # Load selected frame
-        selected_frame = self._load_image(frames_dict[frame_number])
+        frame_key = f"frame_{current_frame}"
+        selected_frame_path = frames_dict[frame_key]["original_image_path"]
+        selected_frame = self._load_image(selected_frame_path)
 
         if selected_frame is None:
-            print(f"Failed to load frame {frame_number}")
+            print(f"Failed to load frame {current_frame}")
             empty_image = torch.zeros((1, 64, 64, 3))
-            return empty_image, image_sequence
+            return empty_image, fp_pipe
 
-        return selected_frame, image_sequence
+        return selected_frame, fp_pipe
