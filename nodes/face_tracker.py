@@ -230,6 +230,9 @@ class FaceTracker:
         Returns:
             torch.Tensor: Batch of face masks in ComfyUI MASK format
         """
+        # Import tqdm for progress bar
+        from tqdm import tqdm
+
         # Get image dimensions and batch size
         if len(image.shape) == 4:  # Batch of images
             batch_size, height, width = image.shape[0], image.shape[1], image.shape[2]
@@ -240,8 +243,8 @@ class FaceTracker:
         result_masks = []
         coverage_values = []
 
-        # Process each frame to generate initial masks
-        for frame_idx in range(batch_size):
+        # Process each frame to generate initial masks with progress bar
+        for frame_idx in tqdm(range(batch_size), desc="Generating masks", unit="mask"):
             # Get frame key
             frame_key = f"frame_{frame_idx}"
 
@@ -309,6 +312,7 @@ class FaceTracker:
 
             # Handle case with at least 3 frames (regular interpolation for middle frames)
             if batch_size > 2:
+                print("Checking for frames requiring interpolation...")
                 for frame_idx in range(1, batch_size - 1):
                     current_coverage = coverage_values[frame_idx]
                     prev_coverage = coverage_values[frame_idx - 1]
@@ -319,6 +323,9 @@ class FaceTracker:
 
                     # If current mask has significantly lower coverage than the average of its neighbors
                     if neighbors_avg > 0 and (current_coverage / neighbors_avg) < coverage_threshold:
+                        print(
+                            f"Frame {frame_idx}: Interpolating mask (coverage ratio: {(current_coverage / neighbors_avg):.3f})")
+
                         # Get previous and next masks
                         prev_mask = result_masks[frame_idx - 1].cpu().numpy()
                         next_mask = result_masks[frame_idx + 1].cpu().numpy()
@@ -329,6 +336,11 @@ class FaceTracker:
                         # Replace current mask with interpolated one
                         interpolated_masks[frame_idx] = torch.from_numpy(interpolated_mask)
 
+                        # Log new coverage for debugging
+                        new_coverage = float(interpolated_mask.sum() / total_pixels)
+                        print(
+                            f"  Frame {frame_idx}: Coverage improved from {current_coverage:.4f} to {new_coverage:.4f}")
+
             # Handle first frame (if it has significantly lower coverage than the second frame)
             if batch_size >= 2:
                 # Compare first frame with second frame
@@ -337,6 +349,8 @@ class FaceTracker:
 
                 # If first frame has significantly lower coverage
                 if second_coverage > 0 and (first_coverage / second_coverage) < coverage_threshold:
+                    print(f"First frame: Fixing low coverage mask (ratio: {(first_coverage / second_coverage):.3f})")
+
                     # Simply reuse the second frame mask for the first frame
                     interpolated_masks[0] = result_masks[1].clone()
 
@@ -348,6 +362,8 @@ class FaceTracker:
 
                 # If last frame has significantly lower coverage
                 if prev_coverage > 0 and (last_coverage / prev_coverage) < coverage_threshold:
+                    print(f"Last frame: Fixing low coverage mask (ratio: {(last_coverage / prev_coverage):.3f})")
+
                     # Simply reuse the second-to-last frame mask for the last frame
                     interpolated_masks[-1] = result_masks[-2].clone()
 
