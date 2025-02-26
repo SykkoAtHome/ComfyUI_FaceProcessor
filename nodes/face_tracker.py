@@ -66,10 +66,14 @@ class FaceTracker:
             tuple: (image, updated fp_pipe, mask, tracking_mask)
         """
         try:
+            # Import tqdm for progress bar
+            from tqdm import tqdm
+
             # Process all frames in the batch
             batch_size = image.shape[0] if len(image.shape) == 4 else 1
 
-            for frame_idx in range(batch_size):
+            # Process each frame with progress bar
+            for frame_idx in tqdm(range(batch_size), desc="Tracking faces", unit="frame"):
                 # Get current frame
                 current_frame = image[frame_idx:frame_idx + 1] if batch_size > 1 else image
                 frame_np = self.image_processor.convert_to_numpy(current_frame)
@@ -151,23 +155,20 @@ class FaceTracker:
                 fp_pipe["frames"][frame_key]["tracking"]["mask_coverage"] = float(np.mean(mask_np > 0))
 
         # Step 1: MediaPipe Detection (only actual implementation)
-        print(f"Frame {frame_idx}: Running MediaPipe detection")
         mediapipe_results = self._mediapipe_detector(frame_np, proxy_scale)
         if mediapipe_results:
             fp_pipe["frames"][frame_key]["tracking"]["mediapipe"] = mediapipe_results
         else:
-            print(f"Frame {frame_idx}: MediaPipe detection failed")
+            # Quiet failure, will be reflected in progress bar
             return
 
         # Step 2: Optical Flow placeholder notification (if enabled)
         if use_optical_flow and frame_idx > 0:
-            print(f"Frame {frame_idx}: Optical Flow tracking is currently a placeholder feature")
             # Just add a placeholder key to indicate it would be used
             fp_pipe["frames"][frame_key]["tracking"]["optical_flow_placeholder"] = True
 
         # Step 3: Points Tracking placeholder notification (if enabled)
         if use_track_points:
-            print(f"Frame {frame_idx}: Points Tracking is currently a placeholder feature")
             # Just add a placeholder key to indicate it would be used
             fp_pipe["frames"][frame_key]["tracking"]["points_tracker_placeholder"] = True
 
@@ -318,11 +319,6 @@ class FaceTracker:
 
                     # If current mask has significantly lower coverage than the average of its neighbors
                     if neighbors_avg > 0 and (current_coverage / neighbors_avg) < coverage_threshold:
-                        print(
-                            f"Frame {frame_idx}: Coverage ratio to neighbors: {(current_coverage / neighbors_avg):.3f}, interpolating")
-                        print(
-                            f"  Current: {current_coverage:.4f}, Prev: {prev_coverage:.4f}, Next: {next_coverage:.4f}, Avg: {neighbors_avg:.4f}")
-
                         # Get previous and next masks
                         prev_mask = result_masks[frame_idx - 1].cpu().numpy()
                         next_mask = result_masks[frame_idx + 1].cpu().numpy()
@@ -333,11 +329,6 @@ class FaceTracker:
                         # Replace current mask with interpolated one
                         interpolated_masks[frame_idx] = torch.from_numpy(interpolated_mask)
 
-                        # Log new coverage for debugging
-                        total_pixels = height * width
-                        new_coverage = float(interpolated_mask.sum() / total_pixels)
-                        print(f"Frame {frame_idx}: Coverage after interpolation: {new_coverage:.4f}")
-
             # Handle first frame (if it has significantly lower coverage than the second frame)
             if batch_size >= 2:
                 # Compare first frame with second frame
@@ -346,10 +337,6 @@ class FaceTracker:
 
                 # If first frame has significantly lower coverage
                 if second_coverage > 0 and (first_coverage / second_coverage) < coverage_threshold:
-                    print(
-                        f"First frame: Coverage ratio to second frame: {(first_coverage / second_coverage):.3f}, reusing second frame")
-                    print(f"  First: {first_coverage:.4f}, Second: {second_coverage:.4f}")
-
                     # Simply reuse the second frame mask for the first frame
                     interpolated_masks[0] = result_masks[1].clone()
 
@@ -361,10 +348,6 @@ class FaceTracker:
 
                 # If last frame has significantly lower coverage
                 if prev_coverage > 0 and (last_coverage / prev_coverage) < coverage_threshold:
-                    print(
-                        f"Last frame: Coverage ratio to previous frame: {(last_coverage / prev_coverage):.3f}, reusing previous frame")
-                    print(f"  Last: {last_coverage:.4f}, Previous: {prev_coverage:.4f}")
-
                     # Simply reuse the second-to-last frame mask for the last frame
                     interpolated_masks[-1] = result_masks[-2].clone()
 

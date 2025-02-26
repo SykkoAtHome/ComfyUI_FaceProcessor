@@ -55,6 +55,8 @@ class FaceFitAndRestore:
     def process_image(self, mode, workflow, output_mode, padding_percent=0.0, bbox_size="1024",
                       image=None, fp_pipe=None, image_sequence=None):
         """Process images in either Fit or Restore mode with unified fp_pipe structure."""
+        # Import tqdm for progress bar
+        from tqdm import tqdm
 
         # Validate inputs
         if image is None and (workflow == "single_image" or mode == "Restore"):
@@ -103,28 +105,23 @@ class FaceFitAndRestore:
                     total_frames = len(image_sequence["frames"])
                     frames_to_process = image_sequence["frames"]
 
-                print(f"Processing sequence of {total_frames} frames...")
                 results = {}
                 current_frame_result = None
 
-                # Process each frame
-                for frame_idx in range(total_frames):
-                    print(f"Processing frame {frame_idx + 1}/{total_frames}")
-
+                # Process each frame with progress bar
+                for frame_idx in tqdm(range(total_frames), desc="Processing frames", unit="frame"):
+                    # Handle frame image based on mode
                     if mode == "Fit":
                         frame_path = frames_to_process[frame_idx]
-                        frame_image = self.image_processor.load_image_from_path(frame_path)
-                        if frame_image is None:
-                            print(f"Warning: Could not load frame {frame_idx}")
-                            continue
+                        frame_image = None  # Let _process_frame load the image
                     else:  # Restore
                         # Handle potential batch input
-                        if len(image.shape) == 4 and image.shape[0] > 1:  # We have a batch
+                        if image is not None and len(image.shape) == 4 and image.shape[0] > 1:  # We have a batch
                             if frame_idx < image.shape[0]:
                                 frame_image = image[frame_idx:frame_idx + 1]  # Keep the batch dimension
                             else:
                                 print(f"Warning: Frame index {frame_idx} exceeds batch size {image.shape[0]}")
-                                continue
+                                frame_image = None
                         else:  # Single image
                             frame_image = image
                         frame_path = None
@@ -191,6 +188,13 @@ class FaceFitAndRestore:
             frame_key = f"frame_{frame_number}"
 
             if mode == "Fit":
+                # Verify image is not None when loading from path
+                if original_path and image is None:
+                    image = self.image_processor.load_image_from_path(original_path)
+                    if image is None:
+                        print(f"Warning: Failed to load image from {original_path}")
+                        return None, fp_pipe, None, int(bbox_size)
+
                 # Process frame in Fit mode
                 result_image, frame_settings, result_mask = self._fit(
                     image=image,
@@ -378,8 +382,17 @@ class FaceFitAndRestore:
 
     def _create_empty_mask(self, image):
         """Create an empty mask matching the image dimensions."""
-        if torch.is_tensor(image):
-            shape = image.shape[1:3]
-        else:
-            shape = image.shape[:2]
-        return torch.zeros((1, *shape), dtype=torch.float32)
+        try:
+            if image is None:
+                # Return a small default mask if image is None
+                return torch.zeros((1, 64, 64), dtype=torch.float32)
+
+            if torch.is_tensor(image):
+                shape = image.shape[1:3]
+            else:
+                shape = image.shape[:2]
+            return torch.zeros((1, *shape), dtype=torch.float32)
+        except Exception as e:
+            # Fallback to a default size if any error occurs
+            print(f"Error creating empty mask: {str(e)}")
+            return torch.zeros((1, 64, 64), dtype=torch.float32)
