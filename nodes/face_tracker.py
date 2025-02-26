@@ -35,6 +35,9 @@ class FaceTracker:
                     "max": 1.0,
                     "step": 0.05
                 }),
+                "show_landmarks": ("BOOLEAN", {
+                    "default": False
+                }),
             },
             "optional": {
                 "mask": ("MASK", {
@@ -48,7 +51,7 @@ class FaceTracker:
     FUNCTION = "track_face"
     CATEGORY = "Face Processor"
 
-    def track_face(self, image, fp_pipe, use_optical_flow, use_track_points, proxy_scale, mask=None):
+    def track_face(self, image, fp_pipe, use_optical_flow, use_track_points, proxy_scale, show_landmarks, mask=None):
         """
         Main tracking method processing all frames in the batch.
         Currently only MediaPipe detection is implemented.
@@ -60,6 +63,7 @@ class FaceTracker:
             use_optical_flow: Whether to use optical flow for tracking (placeholder)
             use_track_points: Whether to use point tracking (placeholder)
             proxy_scale: Scale factor for proxy processing
+            show_landmarks: Whether to draw landmarks on output images
             mask: Optional mask for limiting processing area
 
         Returns:
@@ -111,8 +115,13 @@ class FaceTracker:
             if mask is not None:
                 self._update_landmarks_mask_status(fp_pipe, tracking_mask)
 
-            # Return original image, updated fp_pipe, original mask, and tracking mask
-            return image, fp_pipe, mask, tracking_mask
+            # Draw landmarks on output images if requested
+            output_image = image
+            if show_landmarks:
+                output_image = self._draw_landmarks_on_images(image, fp_pipe)
+
+            # Return results
+            return output_image, fp_pipe, mask, tracking_mask
 
         except Exception as e:
             print(f"Error in track_face: {str(e)}")
@@ -430,3 +439,108 @@ class FaceTracker:
         except Exception as e:
             print(f"Error updating landmarks mask status: {str(e)}")
             traceback.print_exc()
+
+    def _draw_landmarks_on_images(self, images, fp_pipe):
+        """
+        Draw landmarks on the images, color-coded based on their in_mask status.
+        Green for in_mask=1, red for in_mask=0.
+
+        Args:
+            images: Input image tensor (B,H,W,C) or (H,W,C)
+            fp_pipe: Face processing pipeline data with landmarks
+
+        Returns:
+            torch.Tensor: Images with landmarks drawn
+        """
+        try:
+            # Handle batch vs single image
+            is_batch = len(images.shape) == 4
+            batch_size = images.shape[0] if is_batch else 1
+
+            # Process each frame
+            results = []
+
+            for frame_idx in range(batch_size):
+                # Get current frame
+                current_frame = images[frame_idx:frame_idx + 1] if is_batch else images
+
+                # Convert to numpy using ImageProcessor
+                frame_np = self.image_processor.convert_to_numpy(current_frame)
+
+                if frame_np is None:
+                    # Skip this frame if conversion failed
+                    if is_batch:
+                        results.append(images[frame_idx:frame_idx + 1])
+                    else:
+                        results.append(images)
+                    continue
+
+                height, width = frame_np.shape[:2]
+
+                # Get landmarks for current frame
+                frame_key = f"frame_{frame_idx}"
+                if (frame_key in fp_pipe["frames"] and
+                        "tracking" in fp_pipe["frames"][frame_key] and
+                        "mediapipe" in fp_pipe["frames"][frame_key]["tracking"]):
+
+                    landmarks_data = fp_pipe["frames"][frame_key]["tracking"]["mediapipe"]
+
+                    # Separate landmarks by in_mask status
+                    in_mask_landmarks = []
+                    out_mask_landmarks = []
+
+                    for landmark_id, coords in landmarks_data.items():
+                        landmark_row = {
+                            'x': coords['x'],
+                            'y': coords['y'],
+                            'index': landmark_id
+                        }
+
+                        # Add to appropriate list based on in_mask status
+                        if coords.get('in_mask', 1) == 1:
+                            in_mask_landmarks.append(landmark_row)
+                        else:
+                            out_mask_landmarks.append(landmark_row)
+
+                    # Create DataFrames for each group
+                    in_mask_df = pd.DataFrame(in_mask_landmarks) if in_mask_landmarks else None
+                    out_mask_df = pd.DataFrame(out_mask_landmarks) if out_mask_landmarks else None
+
+                    # Copy the original image
+                    result_image = frame_np.copy()
+
+                    # Draw landmarks directly on the image using OpenCV
+                    if in_mask_df is not None and not in_mask_df.empty:
+                        for _, landmark in in_mask_df.iterrows():
+                            x, y = int(landmark['x']), int(landmark['y'])
+                            if 0 <= x < width and 0 <= y < height:  # Ensure coordinates are within image bounds
+                                # Draw filled green circle
+                                cv2.circle(result_image, (x, y), 3, (0, 255, 0), -1, cv2.LINE_AA)
+
+                    if out_mask_df is not None and not out_mask_df.empty:
+                        for _, landmark in out_mask_df.iterrows():
+                            x, y = int(landmark['x']), int(landmark['y'])
+                            if 0 <= x < width and 0 <= y < height:  # Ensure coordinates are within image bounds
+                                # Draw filled red circle
+                                cv2.circle(result_image, (x, y), 3, (255, 0, 0), -1, cv2.LINE_AA)
+
+                    # Convert back to tensor
+                    frame_tensor = self.image_processor.numpy_to_tensor(result_image)
+                    results.append(frame_tensor)
+                else:
+                    # No landmarks data, keep original
+                    if is_batch:
+                        results.append(images[frame_idx:frame_idx + 1])
+                    else:
+                        results.append(images)
+
+            # Combine results
+            if is_batch:
+                return torch.cat(results, dim=0)
+            else:
+                return results[0]
+
+        except Exception as e:
+            print(f"Error drawing landmarks: {str(e)}")
+            traceback.print_exc()
+            return images
