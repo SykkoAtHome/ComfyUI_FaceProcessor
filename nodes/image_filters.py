@@ -6,7 +6,7 @@ from ..core.image_processor import ImageProcessor
 
 
 class HighPassFilter:
-    """ComfyUI node implementing AE-style high-pass filter with dynamic histogram visualization"""
+    """ComfyUI node implementing AE-style high-pass filter"""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -48,10 +48,7 @@ class HighPassFilter:
                     "min": 0.0,
                     "max": 2.0,
                     "step": 0.01
-                }),
-                "show_histogram": ("BOOLEAN", {
-                    "default": False
-                }),
+                })
             }
         }
 
@@ -62,41 +59,65 @@ class HighPassFilter:
 
     def apply_hpf(self, image: torch.Tensor, blur_radius: int, blur_iterations: int,
                   blend_opacity: float, input_black: int, input_white: int,
-                  gamma: float, show_histogram: bool) -> tuple[Tensor, dict]:
-        """Main processing function implementing the High Pass Filter"""
+                  gamma: float) -> tuple[Tensor, dict]:
+        """Main processing function implementing the High Pass Filter
 
-        # Convert input tensor to numpy array
-        np_img = ImageProcessor.tensor_to_numpy(image)
+        Args:
+            image: Input image tensor (B,H,W,C) or (H,W,C)
+            blur_radius: Radius for box blur (controls blur kernel size)
+            blur_iterations: Number of blur iterations (controls blur strength)
+            blend_opacity: Opacity for blending original with inverted blurred image
+            input_black: Black level for tone mapping (0-255)
+            input_white: White level for tone mapping (0-255)
+            gamma: Gamma correction value
 
-        # 1. Apply box blur with multiple iterations
-        kernel_size = 2 * blur_radius + 1
-        kernel = np.ones((kernel_size, kernel_size), np.float32) / (kernel_size ** 2)
-        blurred = np_img.copy()
-        for _ in range(blur_iterations):
-            blurred = cv2.filter2D(blurred, -1, kernel, borderType=cv2.BORDER_REPLICATE)
+        Returns:
+            tuple[Tensor, dict]: Processed image and settings dictionary
+        """
+        # Check if input is a batch of images
+        is_batch = len(image.shape) == 4
+        batch_size = image.shape[0] if is_batch else 1
 
-        # 2. Invert blurred image
-        inverted = cv2.bitwise_not(blurred)
+        # Store results
+        results = []
 
-        # 3. Blend original with inverted using specified opacity
-        composite = cv2.addWeighted(np_img, 1 - blend_opacity, inverted, blend_opacity, 0)
+        # Process each image in the batch (or the single image)
+        for i in range(batch_size):
+            # Get current image
+            current_image = image[i:i + 1] if is_batch else image
 
-        # 4. Apply levels adjustment
-        in_black = np.clip(input_black, 0, 255)
-        in_white = np.clip(input_white, in_black + 1, 255)
-        levels = np.clip((composite.astype(np.float32) - in_black) / (in_white - in_black), 0, 1)
-        levels = np.power(levels, 1.0 / gamma) if gamma > 0 else levels
-        result = (levels * 255).astype(np.uint8)
+            # Convert input tensor to numpy array
+            np_img = ImageProcessor.tensor_to_numpy(current_image)
 
-        # Add histogram visualization if enabled
-        if show_histogram:
-            hist_img = ImageProcessor.draw_dynamic_histogram(composite, in_black, in_white, gamma)
-            target_width = result.shape[1]
-            hist_img = cv2.resize(hist_img, (target_width, 200))
-            result = np.vstack([result, hist_img])
+            # 1. Apply box blur with multiple iterations
+            kernel_size = 2 * blur_radius + 1
+            kernel = np.ones((kernel_size, kernel_size), np.float32) / (kernel_size ** 2)
+            blurred = np_img.copy()
+            for _ in range(blur_iterations):
+                blurred = cv2.filter2D(blurred, -1, kernel, borderType=cv2.BORDER_REPLICATE)
 
-        # Convert back to tensor format
-        result = ImageProcessor.numpy_to_tensor(result)
+            # 2. Invert blurred image
+            inverted = cv2.bitwise_not(blurred)
+
+            # 3. Blend original with inverted using specified opacity
+            composite = cv2.addWeighted(np_img, 1 - blend_opacity, inverted, blend_opacity, 0)
+
+            # 4. Apply levels adjustment
+            in_black = np.clip(input_black, 0, 255)
+            in_white = np.clip(input_white, in_black + 1, 255)
+            levels = np.clip((composite.astype(np.float32) - in_black) / (in_white - in_black), 0, 1)
+            levels = np.power(levels, 1.0 / gamma) if gamma > 0 else levels
+            result = (levels * 255).astype(np.uint8)
+
+            # Convert back to tensor format
+            result_tensor = ImageProcessor.numpy_to_tensor(result)
+            results.append(result_tensor)
+
+        # Combine results
+        if is_batch:
+            final_result = torch.cat(results, dim=0)
+        else:
+            final_result = results[0]
 
         # Prepare settings dictionary
         settings = {
@@ -106,9 +127,8 @@ class HighPassFilter:
                 "blend_opacity": blend_opacity,
                 "input_black": input_black,
                 "input_white": input_white,
-                "gamma": gamma,
-                "show_histogram": False
+                "gamma": gamma
             }
         }
 
-        return result, settings
+        return final_result, settings

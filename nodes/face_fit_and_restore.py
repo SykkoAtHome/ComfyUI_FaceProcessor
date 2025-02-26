@@ -71,7 +71,6 @@ class FaceFitAndRestore:
         # Initialize fp_pipe if None
         if fp_pipe is None:
             fp_pipe = {
-                "current_frame": 0,
                 "padding_percent": padding_percent,
                 "target_lm": {},
                 "frames": {}
@@ -90,26 +89,22 @@ class FaceFitAndRestore:
                     fp_pipe=fp_pipe
                 )
             else:  # image_sequence
-                current_frame = fp_pipe.get("current_frame", 0)
-                fp_pipe["current_frame"] = current_frame
+                # Wyszukanie, ile ramek mamy w fp_pipe
+                total_frames = len(fp_pipe["frames"])
 
+                # Przygotowanie struktury do przetwarzania ramek
                 if mode == "Restore":
-                    total_frames = len(fp_pipe["frames"])
                     frames_to_process = {
                         idx: None for idx in range(total_frames)
                     }
                 else:  # Fit mode
-                    total_frames = len(fp_pipe["frames"])
                     frames_to_process = {}
-
-                    # Przebudowujemy frames_to_process aby zawierało indeksy i ścieżki z fp_pipe
                     for i in range(total_frames):
                         frame_key = f"frame_{i}"
                         if frame_key in fp_pipe["frames"]:
                             frames_to_process[i] = fp_pipe["frames"][frame_key].get("original_image_path")
 
                 results = {}
-                current_frame_result = None
 
                 # Process each frame with progress bar
                 for frame_idx in tqdm(range(total_frames), desc="Processing frames", unit="frame"):
@@ -140,17 +135,20 @@ class FaceFitAndRestore:
                         original_path=frame_path if mode == "Fit" else None
                     )
 
-                    # Store results for both current frame and batch processing
+                    # Store results
                     results[frame_idx] = result
-                    if frame_idx == current_frame:
-                        current_frame_result = result
 
-                # Return based on output mode
+                # Return based on output_mode
                 if output_mode == "current_frame":
-                    if current_frame_result is None:
-                        print(f"Warning: Frame {current_frame} not found in sequence")
+                    # W trybie current_frame, zwracamy pierwszą ramkę jako domyślną
+                    # lub pozwalamy użytkownikowi określić, którą ramkę zwrócić
+                    # poprzez dodatkowy parametr (to mogłoby być dodane w przyszłości)
+                    default_frame_idx = 0
+                    if default_frame_idx in results:
+                        return results[default_frame_idx]
+                    else:
+                        print(f"Warning: Frame {default_frame_idx} not found in sequence")
                         return None, fp_pipe, None, int(bbox_size)
-                    return current_frame_result
                 else:  # batch_sequence mode
                     # Collect all processed frames
                     all_frames = []

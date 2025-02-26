@@ -115,20 +115,20 @@ class ImageFeeder:
         return image_files
 
     def feed_images(self, directory: str, current_frame: int, number_of_frames: int = 0, skip_first_frames: int = 0) -> \
-            Tuple[torch.Tensor, Dict]:
+    Tuple[torch.Tensor, Dict]:
         """
         Main processing function
 
         Args:
             directory: Path to images directory
-            current_frame: Index of frame to return
-            number_of_frames: Number of frames to process (0 = all frames)
-            skip_first_frames: Number of frames to skip from the beginning
+            current_frame: Absolute index of the frame to return (index in the file list)
+            number_of_frames: Number of frames to include in fp_pipe (0 = all frames)
+            skip_first_frames: Number of frames to skip from the beginning in fp_pipe
 
         Returns:
             Tuple containing:
-            - Selected frame as tensor
-            - Dictionary with fp_pipe structure
+            - Selected frame as tensor (based on current_frame)
+            - Dictionary with fp_pipe structure (based on skip_first_frames and number_of_frames)
         """
         # Check if directory changed
         if directory != self.current_dir:
@@ -141,54 +141,60 @@ class ImageFeeder:
             print("No images found in directory")
             # Return empty image and data
             empty_image = torch.zeros((1, 64, 64, 3))
-            return empty_image, {"current_frame": 0, "frames": {}}
+            return empty_image, {"frames": {}}
 
-        # Calculate frame ranges
-        total_available_frames = len(self.image_files)
-        start_frame = skip_first_frames
+        # PART 1: Handle current_frame for image output
+        total_files = len(self.image_files)
 
-        # If number_of_frames is 0, use all remaining frames
-        if number_of_frames == 0:
-            end_frame = total_available_frames
+        # Validate current_frame is within range
+        if current_frame < 0:
+            current_frame = 0
+            print(f"Current frame index adjusted: {current_frame} (min value)")
+        elif current_frame >= total_files:
+            current_frame = total_files - 1
+            print(f"Current frame index adjusted: {current_frame} (max value)")
+
+        # Load the selected frame based on current_frame
+        selected_frame = self._load_image(self.image_files[current_frame])
+
+        if selected_frame is None:
+            print(f"Failed to load frame at index {current_frame}")
+            selected_frame = torch.zeros((1, 64, 64, 3))
+
+        # PART 2: Handle the fp_pipe creation based on skip_first_frames and number_of_frames
+        # Validate skip_first_frames
+        if skip_first_frames < 0:
+            skip_first_frames = 0
+        elif skip_first_frames >= total_files:
+            skip_first_frames = 0
+            print(f"Skip first frames reset to 0 (was out of range)")
+
+        # Determine range of frames to include in fp_pipe
+        if number_of_frames <= 0:
+            # Include all remaining frames
+            end_frame = total_files
         else:
-            end_frame = min(start_frame + number_of_frames, total_available_frames)
+            # Include limited number of frames
+            end_frame = min(skip_first_frames + number_of_frames, total_files)
 
-        # Prepare frame mapping with sequential indices starting from 0
+        # Build the frames dictionary
         frames_dict = {}
-
-        for new_idx, original_idx in enumerate(range(start_frame, end_frame)):
-            frame_key = f"frame_{new_idx}"
+        for i, abs_idx in enumerate(range(skip_first_frames, end_frame)):
+            frame_key = f"frame_{i}"
             frames_dict[frame_key] = {
-                "original_frame_index": original_idx,
-                "original_image_path": self.image_files[original_idx]
+                "original_frame_index": abs_idx,
+                "original_image_path": self.image_files[abs_idx]
             }
 
-        # Print debug info
-        print(f"Processing frames {start_frame} to {end_frame - 1}")
-        print(f"Remapped to indices 0 to {len(frames_dict) - 1}")
-
-        # Validate frame number
-        if current_frame >= len(frames_dict):
-            current_frame = len(frames_dict) - 1
-            print(f"Frame number too high, using last available frame: {current_frame}")
-        elif current_frame < 0:
-            current_frame = 0
-            print(f"Frame number too low, using first available frame: {current_frame}")
-
-        # Prepare return data in fp_pipe format
+        # Create fp_pipe without current_frame
         fp_pipe = {
-            "current_frame": current_frame,
             "frames": frames_dict
         }
 
-        # Load selected frame
-        frame_key = f"frame_{current_frame}"
-        selected_frame_path = frames_dict[frame_key]["original_image_path"]
-        selected_frame = self._load_image(selected_frame_path)
-
-        if selected_frame is None:
-            print(f"Failed to load frame {current_frame}")
-            empty_image = torch.zeros((1, 64, 64, 3))
-            return empty_image, fp_pipe
+        print(f"Output: frame index {current_frame} (out of {total_files} files)")
+        if number_of_frames > 0:
+            print(f"fp_pipe contains {len(frames_dict)} frames (indexes {skip_first_frames} to {end_frame - 1})")
+        else:
+            print(f"fp_pipe contains all {len(frames_dict)} frames")
 
         return selected_frame, fp_pipe
