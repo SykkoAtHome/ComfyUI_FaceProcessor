@@ -207,8 +207,7 @@ class FaceFitAndRestore:
                         "bbox_size": int(bbox_size),
                         "crop_bbox": frame_settings["crop_bbox"],
                         "original_image_shape": frame_settings["original_image_shape"],
-                        "rotation_angle": frame_settings["rotation_angle"],
-                        "detected_lm": {}  # Will be populated by face_wrapper
+                        "rotation_angle": frame_settings["rotation_angle"]
                     }
 
                     # Add original path for sequence processing

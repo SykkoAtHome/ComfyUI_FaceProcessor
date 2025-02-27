@@ -164,7 +164,11 @@ class FaceTracker:
                 fp_pipe["frames"][frame_key]["tracking"]["mask_coverage"] = float(np.mean(mask_np > 0))
 
         # Step 1: MediaPipe Detection (only actual implementation)
-        mediapipe_results = self._mediapipe_detector(frame_np, proxy_scale)
+        mediapipe_results, blur_score = self._mediapipe_detector(frame_np, proxy_scale)
+
+        # Store blur score in fp_pipe at the frame level
+        fp_pipe["frames"][frame_key]["blur_score"] = float(blur_score)
+
         if mediapipe_results:
             fp_pipe["frames"][frame_key]["tracking"]["mediapipe"] = mediapipe_results
         else:
@@ -186,14 +190,19 @@ class FaceTracker:
         Detect facial landmarks using MediaPipe.
         Returns detection results in unified format where key is landmark ID and value is
         a dictionary with x, y coordinates and confidence.
+        Also calculates and includes blur score of the image.
         """
         try:
             # Apply proxy scale if needed
             working_image = self._apply_proxy_scale(image_np, proxy_scale)
 
+            # Calculate blur score using the normalized Laplacian method
+            _, blur_score = self.image_processor.calculate_blur_score(working_image, method='gradient', normalize=True)
+
             landmarks_df = self.face_detector.detect_landmarks_mp(working_image)
             if landmarks_df is None:
-                return None
+                # Even if no face is detected, return blur score
+                return None, blur_score
 
             # Rescale landmarks if proxy scale was used
             if proxy_scale < 1.0:
@@ -210,11 +219,11 @@ class FaceTracker:
                     "in_mask": 1
                 }
 
-            return results
+            return results, blur_score
 
         except Exception as e:
             print(f"Error in MediaPipe detection: {str(e)}")
-            return None
+            return None, 0.0
 
     def _apply_proxy_scale(self, image_np, proxy_scale):
         """Helper method to apply proxy scale to image."""

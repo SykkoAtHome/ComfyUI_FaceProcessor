@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
+from torch import Tensor
 from typing import Union, Optional, Tuple
 
 class ImageProcessor:
@@ -443,7 +444,7 @@ class ImageProcessor:
         return mask
 
     @staticmethod
-    def convert_mask_to_tensor(mask: np.ndarray) -> torch.Tensor:
+    def convert_mask_to_tensor(mask: np.ndarray) -> Tensor | None:
         """Convert numpy mask to tensor.
 
         Args:
@@ -541,5 +542,149 @@ class ImageProcessor:
             print(f"Error loading image from {image_path}: {str(e)}")
             return None
 
+    def calculate_blur_score(self, image, method='gradient', normalize=True, invert_scale=True):
+        """
+        Calculate the blur score of an image using various methods.
+
+        Args:
+            image: Input image in various formats (torch.Tensor, numpy.ndarray, PIL.Image)
+            method: Blur detection method ('gradient' or 'fft')
+            normalize: Whether to normalize score to 0-1 range
+            invert_scale: If True, higher values mean more blur. If False, higher values mean less blur (sharper)
+
+        Returns:
+            tuple: (blur_score, normalized_score)
+                - blur_score: Raw blur metric value
+                - normalized_score: Normalized value between 0-1 with 4 decimal places
+        """
+        # Convert input to numpy array
+        image_np = self.convert_to_numpy(image)
+        if image_np is None:
+            print("Error: Failed to convert image for blur calculation")
+            return 0.0, 0.0
+
+        # Convert to grayscale if needed
+        if len(image_np.shape) == 3 and image_np.shape[2] >= 3:
+            gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = image_np
+
+        # Calculate raw blur score based on selected method
+        if method == 'gradient':
+            score = self._calculate_blur_gradient(gray)
+        elif method == 'fft':
+            score = self._calculate_blur_fft(gray)
+        else:
+            print(f"Error: Unknown blur detection method '{method}'")
+            return 0.0, 0.0
+
+        # If batch processing is needed, we should dynamically find min/max
+        # from the entire batch. Since we're processing one image at a time here,
+        # we'll use previously observed ranges with 10% margin.
+
+        # Get current min/max values from class attributes or use default
+        if hasattr(self, '_blur_min_max') and method in self._blur_min_max:
+            min_val, max_val = self._blur_min_max[method]
+        else:
+            # Initialize if not exists
+            if not hasattr(self, '_blur_min_max'):
+                self._blur_min_max = {}
+
+            # Default values if we don't have historical data
+            if method == 'gradient':
+                # Starting values based on observations
+                min_val, max_val = 6.0, 16.0
+            else:  # fft
+                # Starting values based on observations
+                min_val, max_val = 0.003, 0.015
+
+            # Store initial values
+            self._blur_min_max[method] = (min_val, max_val)
+
+        # Update min/max with current score (to adapt over time)
+        current_min, current_max = self._blur_min_max[method]
+        if score < current_min:
+            current_min = score
+        if score > current_max:
+            current_max = score
+
+        # Store updated values
+        self._blur_min_max[method] = (current_min, current_max)
+
+        # Apply 10% margin to min/max for normalization
+        min_with_margin = current_min * 0.9
+        max_with_margin = current_max * 1.1
+
+        # Normalize the score to 0-1 range
+        if max_with_margin - min_with_margin < 1e-10:  # Avoid division by zero
+            normalized = 0.5  # Default to middle if range is too small
+        else:
+            normalized = (score - min_with_margin) / (max_with_margin - min_with_margin)
+            normalized = min(1.0, max(0.0, normalized))  # Clamp to 0-1
+
+        # Invert scale if requested (higher value = more blur)
+        if invert_scale:
+            normalized = 1.0 - normalized
+
+        # Round to 4 decimal places
+        normalized = round(normalized, 4)
+
+        # Return raw score and normalized value
+        return score, normalized
+
+    def _calculate_blur_gradient(self, gray):
+        """
+        Calculate blur amount using gradient method.
+
+        Args:
+            gray: Grayscale input image (numpy array)
+
+        Returns:
+            float: Blur metric value (higher = sharper)
+        """
+        # Calculate gradients
+        gx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+        gy = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+
+        # Calculate gradient magnitude
+        magnitude = np.sqrt(gx ** 2 + gy ** 2)
+
+        # Return mean gradient magnitude
+        return np.mean(magnitude)
+
+    def _calculate_blur_fft(self, gray):
+        """
+        Calculate blur amount using FFT method.
+
+        Args:
+            gray: Grayscale input image (numpy array)
+
+        Returns:
+            float: Blur metric value (higher = sharper)
+        """
+        rows, cols = gray.shape
+        crow, ccol = rows // 2, cols // 2
+
+        # Apply FFT
+        f = np.fft.fft2(gray)
+        fshift = np.fft.fftshift(f)
+
+        # Create a high-pass filter (keep frequencies above 80% of nyquist)
+        mask = np.zeros((rows, cols), np.uint8)
+        r = min(rows, cols) // 5  # radius of the circle
+        center = [crow, ccol]
+        x, y = np.ogrid[:rows, :cols]
+        mask_area = (x - center[0]) ** 2 + (y - center[1]) ** 2 <= r * r
+        mask[mask_area] = 1
+
+        # Apply mask and compute magnitude spectrum
+        fshift_filtered = fshift * (1 - mask)
+        f_ishift = np.fft.ifftshift(fshift_filtered)
+        img_back = np.fft.ifft2(f_ishift)
+        img_back = np.abs(img_back)
+
+        # Normalize and return score
+        # Higher value means more high frequencies (sharper image)
+        return np.mean(img_back) / np.mean(gray)
 
 
