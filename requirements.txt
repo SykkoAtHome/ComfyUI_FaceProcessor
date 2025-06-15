@@ -1,5 +1,5 @@
 mediapipe>=0.10.0
 dlib>=19.24.0
 pandas>=2.0.0
-cupy-cuda11x>=12.0.0  # for CUDA 11.x
-# cupy-cuda12x>=12.0.0  # for CUDA 12.x (uncomment appropriate version)
+#cupy-cuda11x>=12.0.0  # for CUDA 11.x
+cupy-cuda12x>=12.0.0  # for CUDA 12.x (uncomment appropriate version)
