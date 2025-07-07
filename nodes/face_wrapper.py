@@ -243,7 +243,7 @@ class FaceWrapper:
         """
         if pipe is None:
             pipe = {
-                "workflow": "single_image",
+                "workflow": "image",
                 "current_frame": 0,
                 "frames": {}
             }
