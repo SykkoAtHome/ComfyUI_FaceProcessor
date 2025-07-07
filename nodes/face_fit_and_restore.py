@@ -17,8 +17,8 @@ class FaceFitAndRestore:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "workflow": (["single_image", "image_sequence"], {
-                    "default": "single_image"
+                "workflow": (["image", "image_sequence"], {
+                    "default": "image"
                 }),
                 "mode": (["Fit", "Restore"], {
                     "default": "Fit"
@@ -57,8 +57,8 @@ class FaceFitAndRestore:
         """Process images in either Fit or Restore mode with unified fp_pipe structure."""
 
         # Validate inputs
-        if image is None and (workflow == "single_image" or mode == "Restore"):
-            print("Error: Image is required for single_image workflow and Restore mode")
+        if image is None and (workflow == "image" or mode == "Restore"):
+            print("Error: Image is required for image workflow and Restore mode")
             return None, fp_pipe, None, int(bbox_size)
 
         if workflow == "image_sequence" and mode == "Fit" and (not image_sequence or "frames" not in image_sequence):
@@ -80,15 +80,39 @@ class FaceFitAndRestore:
             }
 
         try:
-            if workflow == "single_image":
-                return self._process_frame(
-                    mode=mode,
-                    image=image,
-                    frame_number=0,
-                    padding_percent=padding_percent,
-                    bbox_size=bbox_size,
-                    fp_pipe=fp_pipe
-                )
+            if workflow == "image":
+                # Handle potential batch input
+                if torch.is_tensor(image) and len(image.shape) == 4 and image.shape[0] > 1:
+                    processed_frames = []
+                    processed_masks = []
+                    batch_size = image.shape[0]
+                    for idx in range(batch_size):
+                        result = self._process_frame(
+                            mode=mode,
+                            image=image[idx:idx + 1],  # keep batch dimension
+                            frame_number=idx,
+                            padding_percent=padding_percent,
+                            bbox_size=bbox_size,
+                            fp_pipe=fp_pipe
+                        )
+                        processed_frames.append(result[0])
+                        if result[2] is not None:
+                            processed_masks.append(result[2])
+
+                    batched_frames = torch.cat(processed_frames, dim=0)
+                    batched_masks = torch.cat(processed_masks, dim=0) if processed_masks else None
+                    return batched_frames, fp_pipe, batched_masks, int(bbox_size)
+
+                else:
+                    return self._process_frame(
+                        mode=mode,
+                        image=image,
+                        frame_number=0,
+                        padding_percent=padding_percent,
+                        bbox_size=bbox_size,
+                        fp_pipe=fp_pipe
+                    )
+
             else:  # image_sequence
                 current_frame = (fp_pipe.get("current_frame", 0) if mode == "Restore"
                                  else image_sequence.get("current_frame", 0))
