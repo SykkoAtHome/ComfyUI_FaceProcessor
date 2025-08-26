@@ -95,8 +95,16 @@ class FaceDetector:
             # Get image dimensions for coordinate conversion
             image_height, image_width = image_np.shape[:2]
 
-            # Extract landmark coordinates
-            for idx, landmark in enumerate(face_landmarks.landmark):
+            # Extract landmark coordinates. MediaPipe may return a
+            # NormalizedLandmarkList object (with a `landmark` attribute)
+            # or simply a list of `Landmark` objects depending on the API
+            # (Solutions vs Tasks). The previous implementation assumed the
+            # former and failed with `'list' object has no attribute
+            # "landmark"' when using the Tasks API. To support both
+            # structures we access the iterable safely.
+            landmarks_iter = getattr(face_landmarks, 'landmark', face_landmarks)
+
+            for idx, landmark in enumerate(landmarks_iter):
                 # Convert normalized coordinates to pixel coordinates
                 x = landmark.x * image_width
                 y = landmark.y * image_height
