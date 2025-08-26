@@ -3,6 +3,8 @@ from typing import Optional, Dict, List
 
 import dlib
 import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision
 import numpy as np
 import requests
 from tqdm import tqdm
@@ -16,7 +18,9 @@ class ModelDownload:
         "canonical_face_model": "https://raw.githubusercontent.com/google-ai-edge/mediapipe/master/mediapipe/modules/face_geometry/data/canonical_face_model.obj",
 
         # Dlib 68 landmark model
-        "shape_predictor_68_face_landmarks": "https://huggingface.co/spaces/asdasdasdasd/Face-forgery-detection/resolve/ccfc24642e0210d4d885bc7b3dbc9a68ed948ad6/shape_predictor_68_face_landmarks.dat"
+        "shape_predictor_68_face_landmarks": "https://huggingface.co/spaces/asdasdasdasd/Face-forgery-detection/resolve/ccfc24642e0210d4d885bc7b3dbc9a68ed948ad6/shape_predictor_68_face_landmarks.dat",
+        # MediaPipe face landmarker .task model
+        "face_landmarker": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
     }
 
     def __init__(self):
@@ -371,35 +375,54 @@ class ModelDlib:
         return self._shape_predictor
 
 
+class _FaceLandmarkerWrapper:
+    """Wrapper to provide a FaceMesh-like interface for MediaPipe Tasks."""
+
+    def __init__(self, landmarker: vision.FaceLandmarker) -> None:
+        self._landmarker = landmarker
+
+    def process(self, image: np.ndarray):
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
+        return self._landmarker.detect(mp_image)
+
+    def close(self) -> None:
+        self._landmarker.close()
+
+
 class ModelMediaPipe:
     """Class for loading and managing MediaPipe face mesh models using singleton pattern"""
 
     _instance: Optional['ModelMediaPipe'] = None
-    _face_mesh: Optional[mp.solutions.face_mesh.FaceMesh] = None
+    _face_mesh: Optional[_FaceLandmarkerWrapper] = None
     _model_loaded: bool = False
 
     def __new__(cls):
-        """Implement singleton pattern"""
         if cls._instance is None:
             cls._instance = super(ModelMediaPipe, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
-        """Initialize MediaPipe model loader"""
         if not self._model_loaded:
             self._initialize_models()
 
     def _initialize_models(self) -> None:
-        """Initialize MediaPipe face mesh model"""
         try:
             print("Initializing MediaPipe Face Mesh...")
 
-            self._face_mesh = mp.solutions.face_mesh.FaceMesh(
-                static_image_mode=True,
-                max_num_faces=1,
-                refine_landmarks=True,
-                min_detection_confidence=0.5
+            downloader = ModelDownload()
+            model_path = downloader.get_model_path("face_landmarker")
+            if not model_path:
+                raise FileNotFoundError("Failed to get face landmarker model")
+
+            base_options = mp_python.BaseOptions(model_asset_path=model_path)
+            options = vision.FaceLandmarkerOptions(
+                base_options=base_options,
+                num_faces=1,
+                output_face_blendshapes=False,
+                output_facial_transformation_matrixes=False,
             )
+            landmarker = vision.FaceLandmarker.create_from_options(options)
+            self._face_mesh = _FaceLandmarkerWrapper(landmarker)
 
             self._model_loaded = True
             print("MediaPipe Face Mesh initialized successfully")
@@ -409,13 +432,11 @@ class ModelMediaPipe:
             raise
 
     @property
-    def face_mesh(self) -> mp.solutions.face_mesh.FaceMesh:
-        """Get MediaPipe Face Mesh instance"""
+    def face_mesh(self) -> _FaceLandmarkerWrapper:
         if not self._face_mesh:
             self._initialize_models()
         return self._face_mesh
 
     def __del__(self):
-        """Clean up resources"""
         if self._face_mesh:
             self._face_mesh.close()

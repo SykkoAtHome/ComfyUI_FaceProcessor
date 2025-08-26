@@ -74,13 +74,15 @@ class FaceDetector:
 
             results = self.mediapipe_model.face_mesh.process(image_np)
 
-            # Get face landmarks using getattr for better type checking
+            # Results may come from MediaPipe Solutions or Tasks. Try both field names.
             face_landmarks_list = getattr(results, 'multi_face_landmarks', None)
+            if not face_landmarks_list:
+                face_landmarks_list = getattr(results, 'face_landmarks', None)
             if not face_landmarks_list:
                 print("No face detected in the image")
                 return None
 
-            # Get first detected face
+            # Take first detected face
             face_landmarks = face_landmarks_list[0]
 
             # Prepare data structure for landmarks
@@ -236,9 +238,3 @@ class FaceDetector:
         except Exception as e:
             print(f"Error during landmark interpolation: {str(e)}")
             return mp_landmarks
-
-
-    def __del__(self):
-        """Clean up resources."""
-        if hasattr(self, 'face_mesh'):
-            self.face_mesh.close()
