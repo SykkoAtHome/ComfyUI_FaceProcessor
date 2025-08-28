@@ -440,3 +440,5 @@ class ModelMediaPipe:
     def __del__(self):
         if self._face_mesh:
             self._face_mesh.close()
+            self._face_mesh = None
+            self._model_loaded = False

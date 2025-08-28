@@ -48,11 +48,6 @@ class FaceDetector:
 
         return mp_landmarks
 
-    def __del__(self):
-        """Clean up resources"""
-        if hasattr(self, 'mediapipe_model') and self.mediapipe_model:
-            self.mediapipe_model.face_mesh.close()
-
     def detect_landmarks_mp(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Optional[pd.DataFrame]:
         """
         Detect facial landmarks in the given image using MediaPipe.
@@ -72,7 +67,17 @@ class FaceDetector:
             if image_np is None:
                 return None
 
-            results = self.mediapipe_model.face_mesh.process(image_np)
+            try:
+                results = self.mediapipe_model.face_mesh.process(image_np)
+            except RuntimeError as runtime_error:
+                if "Task runner is currently not running" in str(runtime_error):
+                    # Reset and reinitialize the MediaPipe model if the task has been closed
+                    self.mediapipe_model._face_mesh = None
+                    self.mediapipe_model._model_loaded = False
+                    self.mediapipe_model = ModelMediaPipe()
+                    results = self.mediapipe_model.face_mesh.process(image_np)
+                else:
+                    raise
 
             # Results may come from MediaPipe Solutions or Tasks. Try both field names.
             face_landmarks_list = getattr(results, 'multi_face_landmarks', None)
