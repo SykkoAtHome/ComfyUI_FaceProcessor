@@ -41,10 +41,16 @@ NODE_DISPLAY_NAME_MAPPINGS = {}
 if FaceFitAndRestore is not None:
     NODE_CLASS_MAPPINGS["FaceFitAndRestore"] = FaceFitAndRestore
     NODE_DISPLAY_NAME_MAPPINGS["FaceFitAndRestore"] = "Face Fit or Restore"
+    # Backwards compatibility with saved workflows referencing the legacy v2 name
+    NODE_CLASS_MAPPINGS["FaceFitAndRestoreV2"] = FaceFitAndRestore
+    NODE_DISPLAY_NAME_MAPPINGS["FaceFitAndRestoreV2"] = "Face Fit or Restore"
 
 if FaceWrapper is not None:
     NODE_CLASS_MAPPINGS["FaceWrapper"] = FaceWrapper
     NODE_DISPLAY_NAME_MAPPINGS["FaceWrapper"] = "Face Wrapper"
+    # Backwards compatibility with saved workflows referencing the legacy v2 name
+    NODE_CLASS_MAPPINGS["FaceWrapperV2"] = FaceWrapper
+    NODE_DISPLAY_NAME_MAPPINGS["FaceWrapperV2"] = "Face Wrapper"
 
 if HighPassFilter is not None:
     NODE_CLASS_MAPPINGS["HighPassFilter"] = HighPassFilter
