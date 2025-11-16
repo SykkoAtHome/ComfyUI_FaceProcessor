@@ -1,3 +1,9 @@
+"""Experimental tracker prototype kept for reference only.
+
+This node is not part of the core FaceProcessor v2.0 pipeline. It remains in the
+repository for future experimentation and should be treated as unstable.
+"""
+
 import cv2
 
 from ..core.face_detector import FaceDetector
