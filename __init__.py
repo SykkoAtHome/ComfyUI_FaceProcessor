@@ -4,6 +4,13 @@ from importlib import import_module
 
 _SKIP_IMPORTS = os.environ.get("FACEPROCESSOR_SKIP_IMPORTS") == "1"
 
+_MISSING_DEPENDENCY_HINTS = {
+    "core": (
+        "Ensure the bundled 'core' module is available by copying the entire ComfyUI_FaceProcessor "
+        "folder (including the 'core' directory) into ComfyUI/custom_nodes and then restart ComfyUI."
+    ),
+}
+
 if not _SKIP_IMPORTS:
     _pkg_name = __name__.split(".")[0]
 
@@ -14,12 +21,17 @@ if not _SKIP_IMPORTS:
 
         missing = getattr(exc, "name", None) or exc.__class__.__name__
         details = str(exc)
+        hint = _MISSING_DEPENDENCY_HINTS.get(
+            missing,
+            "Install the packages listed in requirements.txt and restart ComfyUI.",
+        )
 
         class _MissingNode:
             CATEGORY = category
             FUNCTION = function_name
             RETURN_TYPES = return_types
             RETURN_NAMES = return_names
+            _faceprocessor_missing_dependency_stub = True
 
             @classmethod
             def INPUT_TYPES(cls):  # pragma: no cover - simple accessors
@@ -28,8 +40,7 @@ if not _SKIP_IMPORTS:
             def process(self, *_, **__):  # pragma: no cover - executed only when deps missing
                 raise RuntimeError(
                     f"{display_name} is unavailable because the '{missing}' dependency could not be imported. "
-                    "Install the packages listed in requirements.txt and restart ComfyUI. "
-                    f"Original error: {details}"
+                    f"{hint} Original error: {details}"
                 )
 
         _MissingNode.__name__ = f"{node_name}Unavailable"
@@ -116,12 +127,17 @@ if not _SKIP_IMPORTS:
         node_name="FaceTracker",
         display_name="Face Tracker (Experimental)",
     )
+    def _is_placeholder(node_cls) -> bool:
+        return getattr(node_cls, "_faceprocessor_missing_dependency_stub", False)
 else:  # pragma: no cover - used only when optional deps are missing
     ImageFeeder = None
     HighPassFilter = None
     FaceFitAndRestore = None
     FaceWrapper = None
     FaceTracker = None
+
+    def _is_placeholder(_):
+        return False
 
 # Get the path to the current directory
 NODE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -132,16 +148,18 @@ NODE_DISPLAY_NAME_MAPPINGS = {}
 if FaceFitAndRestore is not None:
     NODE_CLASS_MAPPINGS["FaceFitAndRestore"] = FaceFitAndRestore
     NODE_DISPLAY_NAME_MAPPINGS["FaceFitAndRestore"] = "Face Fit or Restore"
-    # Backwards compatibility with saved workflows referencing the legacy v2 name
-    NODE_CLASS_MAPPINGS["FaceFitAndRestoreV2"] = FaceFitAndRestore
-    NODE_DISPLAY_NAME_MAPPINGS["FaceFitAndRestoreV2"] = "Face Fit or Restore"
+    if not _is_placeholder(FaceFitAndRestore):
+        # Backwards compatibility with saved workflows referencing the legacy v2 name
+        NODE_CLASS_MAPPINGS["FaceFitAndRestoreV2"] = FaceFitAndRestore
+        NODE_DISPLAY_NAME_MAPPINGS["FaceFitAndRestoreV2"] = "Face Fit or Restore"
 
 if FaceWrapper is not None:
     NODE_CLASS_MAPPINGS["FaceWrapper"] = FaceWrapper
     NODE_DISPLAY_NAME_MAPPINGS["FaceWrapper"] = "Face Wrapper"
-    # Backwards compatibility with saved workflows referencing the legacy v2 name
-    NODE_CLASS_MAPPINGS["FaceWrapperV2"] = FaceWrapper
-    NODE_DISPLAY_NAME_MAPPINGS["FaceWrapperV2"] = "Face Wrapper"
+    if not _is_placeholder(FaceWrapper):
+        # Backwards compatibility with saved workflows referencing the legacy v2 name
+        NODE_CLASS_MAPPINGS["FaceWrapperV2"] = FaceWrapper
+        NODE_DISPLAY_NAME_MAPPINGS["FaceWrapperV2"] = "Face Wrapper"
 
 if HighPassFilter is not None:
     NODE_CLASS_MAPPINGS["HighPassFilter"] = HighPassFilter
