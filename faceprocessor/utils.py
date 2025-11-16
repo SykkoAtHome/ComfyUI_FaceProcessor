@@ -13,7 +13,7 @@ try:  # pragma: no cover - optional torch dependency for imports
 except ImportError:  # pragma: no cover - optional torch dependency for imports
     torch = None  # type: ignore[assignment]
 
-from core.base_mesh import MediapipeBaseLandmarks
+from ..core.base_mesh import MediapipeBaseLandmarks
 
 if TYPE_CHECKING:
     from .pipe import FacePipe

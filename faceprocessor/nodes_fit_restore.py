@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from core.image_processor import ImageProcessor
+from ..core.image_processor import ImageProcessor
 
 from .landmarks import DlibRefiner, MediaPipeLandmarks
 from .pipe import FacePipe, FrameData, face_pipe_from_legacy, face_pipe_to_legacy, get_or_create_frame, update_frame

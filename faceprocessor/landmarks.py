@@ -7,14 +7,14 @@ from typing import List, Optional, Tuple
 import cv2
 import numpy as np
 
-from core.image_processor import ImageProcessor
-from core.lm_mapping import LandmarkMappings
-from core.resources.model_loader import ModelMediaPipe
+from ..core.image_processor import ImageProcessor
+from ..core.lm_mapping import LandmarkMappings
+from ..core.resources.model_loader import ModelMediaPipe
 
 from .utils import get_logger
 
 try:  # Optional dependency used only when dlib is available.
-    from core.resources.model_loader import ModelDlib  # type: ignore
+    from ..core.resources.model_loader import ModelDlib  # type: ignore
 except Exception:  # pragma: no cover - exercised only when dlib missing.
     ModelDlib = None  # type: ignore
 
