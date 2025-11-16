@@ -1,4 +1,4 @@
-"""Integration test covering the Fit→Unwrap→Wrap→Restore v2 pipeline."""
+"""Integration test covering the Fit→Unwrap→Wrap→Restore pipeline."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -9,10 +9,10 @@ import pytest
 torch = pytest.importorskip("torch")
 import torch.nn.functional as F  # noqa: E402  # pylint: disable=wrong-import-position
 
-from faceprocessor_v2.nodes_fit_restore import FaceFitAndRestoreV2
-from faceprocessor_v2.nodes_wrapper import FaceWrapperV2
-from faceprocessor_v2.pipe import get_or_create_frame
-from faceprocessor_v2.utils import ensure_face_model
+from faceprocessor.nodes_fit_restore import FaceFitAndRestore
+from faceprocessor.nodes_wrapper import FaceWrapper
+from faceprocessor.pipe import get_or_create_frame
+from faceprocessor.utils import ensure_face_model
 
 
 def _gradient_image(size: int = 512) -> torch.Tensor:
@@ -24,9 +24,9 @@ def _gradient_image(size: int = 512) -> torch.Tensor:
     return image.unsqueeze(0)
 
 
-def test_v2_roundtrip_pipeline(monkeypatch):
-    node = FaceFitAndRestoreV2()
-    wrapper = FaceWrapperV2()
+def test_faceprocessor_roundtrip_pipeline(monkeypatch):
+    node = FaceFitAndRestore()
+    wrapper = FaceWrapper()
     input_image = _gradient_image()
     bbox_size = "512"
 
@@ -58,7 +58,7 @@ def test_v2_roundtrip_pipeline(monkeypatch):
         )
         return resized.clone(), mask, frame_data
 
-    monkeypatch.setattr(FaceFitAndRestoreV2, "_fit_single", fake_fit_single)
+    monkeypatch.setattr(FaceFitAndRestore, "_fit_single", fake_fit_single)
 
     fit_image, fit_mask, pipe = node.process(
         mode="Fit",

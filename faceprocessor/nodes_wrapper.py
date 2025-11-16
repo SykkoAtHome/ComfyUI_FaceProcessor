@@ -1,4 +1,4 @@
-"""FaceWrapper v2 node built on top of the TorchDeformer."""
+"""FaceWrapper node built on top of the TorchDeformer."""
 from __future__ import annotations
 
 from typing import List, Optional, Tuple
@@ -13,8 +13,8 @@ from .frame_ids import resolve_frame_ids
 from .utils import ensure_face_model, get_logger
 
 
-class FaceWrapperV2:
-    """Wraps/unwraps canonical face crops using the shared v2 Torch deformer."""
+class FaceWrapper:
+    """Wraps/unwraps canonical face crops using the shared Torch deformer."""
 
     CATEGORY = "Face Processor"
     FUNCTION = "process"
@@ -23,7 +23,7 @@ class FaceWrapperV2:
 
     def __init__(self) -> None:
         self.deformer = TorchDeformer()
-        self.logger = get_logger("FaceWrapperV2")
+        self.logger = get_logger("FaceWrapper")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -49,7 +49,7 @@ class FaceWrapperV2:
     ):
         """Run the UNWRAP or WRAP stage for the supplied batch of canonical faces."""
         if image is None:
-            raise ValueError("FaceWrapperV2 requires an input image tensor")
+            raise ValueError("FaceWrapper requires an input image tensor")
 
         pipe = face_pipe_from_legacy(fp_pipe)
         tensors = self._split_image_batch(image)
@@ -58,7 +58,7 @@ class FaceWrapperV2:
             frame_ids = resolve_frame_ids(pipe, len(tensors))
         except ValueError as exc:
             raise ValueError(
-                "FaceWrapperV2 requires frame_order metadata from FaceFitAndRestoreV2"
+                "FaceWrapper requires frame_order metadata from FaceFitAndRestore"
             ) from exc
         unwrap_size_int = int(unwrap_size)
 
@@ -81,7 +81,7 @@ class FaceWrapperV2:
                 unwrap_size=active_unwrap_size,
             )
         else:
-            raise ValueError(f"Unsupported FaceWrapperV2 mode: {mode}")
+            raise ValueError(f"Unsupported FaceWrapper mode: {mode}")
 
         legacy_pipe = face_pipe_to_legacy(pipe)
         return torch.cat(images, dim=0), torch.cat(mask_tensors, dim=0), legacy_pipe
@@ -210,7 +210,7 @@ class FaceWrapperV2:
     # ------------------------------------------------------------------
     def _split_image_batch(self, image: torch.Tensor) -> List[torch.Tensor]:
         if image.ndim != 4:
-            raise ValueError("FaceWrapperV2 expects image tensors shaped [B, H, W, 3]")
+            raise ValueError("FaceWrapper expects image tensors shaped [B, H, W, 3]")
         return [image[i : i + 1].detach().clone() for i in range(image.shape[0])]
 
     def _split_mask_batch(self, mask: Optional[torch.Tensor], batch_len: int) -> List[Optional[torch.Tensor]]:
@@ -220,7 +220,7 @@ class FaceWrapperV2:
         if mask.ndim == 2:
             mask = mask.unsqueeze(0)
         if mask.ndim != 3:
-            raise ValueError("FaceWrapperV2 expects masks shaped [B, H, W]")
+            raise ValueError("FaceWrapper expects masks shaped [B, H, W]")
 
         if mask.shape[0] == 1 and batch_len > 1:
             return [mask.clone() for _ in range(batch_len)]

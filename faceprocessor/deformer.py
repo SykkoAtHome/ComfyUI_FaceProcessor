@@ -1,4 +1,4 @@
-"""Torch-based face deformer used by the v2 pipeline."""
+"""Torch-based face deformer used by the FaceProcessor pipeline."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Utility helpers for the FaceProcessor v2 pipeline."""
+"""Utility helpers for the FaceProcessor pipeline."""
 from __future__ import annotations
 
 import logging

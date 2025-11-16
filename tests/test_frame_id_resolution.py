@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-PKG_NAME = "faceprocessor_v2"
+PKG_NAME = "faceprocessor"
 if PKG_NAME not in sys.modules:
     pkg = types.ModuleType(PKG_NAME)
     pkg.__path__ = [str(ROOT / PKG_NAME)]

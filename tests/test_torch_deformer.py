@@ -2,7 +2,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from faceprocessor_v2.deformer import TorchDeformer
+from faceprocessor.deformer import TorchDeformer
 
 
 def make_checker_image(size: int = 4) -> torch.Tensor:

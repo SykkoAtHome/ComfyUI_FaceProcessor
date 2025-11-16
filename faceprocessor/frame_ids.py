@@ -25,5 +25,5 @@ def resolve_frame_ids(
         return list(fallback)
 
     raise ValueError(
-        "FacePipe meta is missing frame_order information; run FaceFitAndRestoreV2 in Fit mode first",
+        "FacePipe meta is missing frame_order information; run FaceFitAndRestore in Fit mode first",
     )

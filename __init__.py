@@ -1,22 +1,35 @@
 import os
+import warnings
+from importlib import import_module
 
 _SKIP_IMPORTS = os.environ.get("FACEPROCESSOR_SKIP_IMPORTS") == "1"
 
 if not _SKIP_IMPORTS:
-    from .nodes.image_feeder import ImageFeeder
-    from .nodes.image_filters import HighPassFilter
-    from .nodes.face_wrapper import FaceWrapper
-    from .nodes.face_fit_and_restore import FaceFitAndRestore
-    from .faceprocessor_v2.nodes_fit_restore import FaceFitAndRestoreV2
-    from .faceprocessor_v2.nodes_wrapper import FaceWrapperV2
-    from .nodes.face_tracker import FaceTracker
+    _pkg_name = __name__.split(".")[0]
+
+    def _optional_import(importer):  # pragma: no cover - exercised during import
+        try:
+            return importer()
+        except (ModuleNotFoundError, ImportError) as exc:  # missing optional deps (torch, cv2, etc.)
+            missing = getattr(exc, "name", None)
+            if missing and missing.startswith(_pkg_name):
+                raise
+            warnings.warn(
+                f"Skipping FaceProcessor node import due to missing dependency: {exc}",
+                RuntimeWarning,
+            )
+            return None
+
+    ImageFeeder = _optional_import(lambda: getattr(import_module(".nodes.image_feeder", __name__), "ImageFeeder"))
+    HighPassFilter = _optional_import(lambda: getattr(import_module(".nodes.image_filters", __name__), "HighPassFilter"))
+    FaceFitAndRestore = _optional_import(lambda: getattr(import_module(".faceprocessor.nodes_fit_restore", __name__), "FaceFitAndRestore"))
+    FaceWrapper = _optional_import(lambda: getattr(import_module(".faceprocessor.nodes_wrapper", __name__), "FaceWrapper"))
+    FaceTracker = _optional_import(lambda: getattr(import_module(".nodes.face_tracker", __name__), "FaceTracker"))
 else:  # pragma: no cover - used only when optional deps are missing
     ImageFeeder = None
     HighPassFilter = None
-    FaceWrapper = None
     FaceFitAndRestore = None
-    FaceFitAndRestoreV2 = None
-    FaceWrapperV2 = None
+    FaceWrapper = None
     FaceTracker = None
 
 # Get the path to the current directory
@@ -29,17 +42,9 @@ if FaceFitAndRestore is not None:
     NODE_CLASS_MAPPINGS["FaceFitAndRestore"] = FaceFitAndRestore
     NODE_DISPLAY_NAME_MAPPINGS["FaceFitAndRestore"] = "Face Fit or Restore"
 
-if FaceFitAndRestoreV2 is not None:
-    NODE_CLASS_MAPPINGS["FaceFitAndRestoreV2"] = FaceFitAndRestoreV2
-    NODE_DISPLAY_NAME_MAPPINGS["FaceFitAndRestoreV2"] = "Face Fit or Restore (v2)"
-
 if FaceWrapper is not None:
     NODE_CLASS_MAPPINGS["FaceWrapper"] = FaceWrapper
     NODE_DISPLAY_NAME_MAPPINGS["FaceWrapper"] = "Face Wrapper"
-
-if FaceWrapperV2 is not None:
-    NODE_CLASS_MAPPINGS["FaceWrapperV2"] = FaceWrapperV2
-    NODE_DISPLAY_NAME_MAPPINGS["FaceWrapperV2"] = "Face Wrapper (v2)"
 
 if HighPassFilter is not None:
     NODE_CLASS_MAPPINGS["HighPassFilter"] = HighPassFilter

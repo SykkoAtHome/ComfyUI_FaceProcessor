@@ -5,15 +5,10 @@ A custom node collection for ComfyUI that provides advanced face detection, alig
 ## Features
 
 - **Face Detection & Landmark Extraction**: Uses MediaPipe Face Mesh to detect and extract 468 facial landmarks
-- **Face Alignment**: Automatic face alignment based on eye positions
-- **Face Transformation**: 
-  - Warping between source and target face landmarks
-  - Scale and translation controls for face shape adjustment
-  - CPU and CUDA-accelerated processing options
-- **Debug Visualization**: 
-  - Visual landmark overlay with customizable parameters
-  - Support for both detected and target landmark visualization
-  - Optional landmark labels
+- **FacePipe Workflow**: `FaceFitAndRestore` prepares canonical crops while `FaceWrapper` unwraps and rewraps them using shared pipe metadata.
+- **Torch-Based Deformation**: Triangle meshes are warped with the differentiable `TorchDeformer`, supporting CPU and CUDA automatically through PyTorch.
+- **Restoration Helpers**: Optional Dlib refinement, canonical landmark models, and consistent frame tracking via `FrameData` and `FacePipe` utilities.
+- **Utility Nodes**: Keep using helper nodes such as `ImageFeeder` or `HighPassFilter` to integrate with broader ComfyUI graphs.
 
 ## Installation
 
@@ -25,56 +20,57 @@ git clone https://github.com/SykkoAtHome/ComfyUI_FaceProcessor.git face_processo
 
 2. Install required dependencies:
 ```bash
-pip install mediapipe opencv-python numpy pandas pillow torch
+pip install -r requirements.txt
+pip install opencv-python numpy pillow
 ```
 
-For CUDA acceleration:
-1. Install [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
-2. Install [CuPy](https://docs.cupy.dev/en/stable/install.html):
-```bash
-pip install cupy-cuda12x  # Replace with your CUDA version
-```
+PyTorch automatically selects CPU or CUDA execution depending on your environment.
 
 ## Nodes
 
-### FaceWrapper
-Main node for face detection and transformation operations.
-
-#### Inputs:
-- `image`: Input image (ComfyUI IMAGE type)
-- `mode`: Operating mode
-  - `Debug`: Visualization of detected landmarks
-  - `Un-Wrap`: Transform face to normalized position
-  - `Wrap`: Transform normalized face back to original position
-- `device`: Processing device (`CPU` or `CUDA`)
-- `show_detection`: Toggle detected landmarks visualization
-- `show_target`: Toggle target landmarks visualization
-- `landmark_size`: Size of landmark points in visualization
-- `show_labels`: Toggle landmark index labels
-- `x_scale`: Horizontal scaling factor (0.5 to 1.0)
-- `y_transform`: Vertical translation (-0.5 to 0.5)
-- `fp_pipe`: Optional settings dictionary
-
-#### Outputs:
-- `image`: Processed image
-- `fp_pipe`: Updated settings dictionary
-
 ### FaceFitAndRestore
-Node for face cropping and restoration operations.
+Creates canonical crops (`Fit`) and restores processed faces back into their source frames (`Restore`). It produces a shared `fp_pipe` dictionary used across the workflow.
 
 #### Inputs:
-- `mode`: Operating mode
-  - `Fit`: Crop and align face
-  - `Restore`: Place processed face back in original image
-- `image`: Input image
-- `padding_percent`: Additional padding around face (0.0 to 1.0)
-- `bbox_size`: Output size for cropped face (512, 1024, or 2048)
-- `fp_pipe`: Required for Restore mode
+- `mode`: `Fit` or `Restore`
+- `bbox_size`: Canonical crop resolution (512/1024/2048)
+- `padding_percent`: Optional padding for crops
+- `image`: Batch of frames (ComfyUI IMAGE)
+- `image_paths`: Alternative string paths batch
+- `fp_pipe`: (optional) pipeline dictionary when restoring
 
 #### Outputs:
-- `image`: Processed image
-- `fp_pipe`: Updated settings dictionary
-- `mask`: Mask indicating face region
+- `image`: Batched canonical crops or restored frames
+- `mask`: Binary masks matching the output
+- `fp_pipe`: Updated pipeline dictionary
+
+### FaceWrapper
+Transforms canonical crops between the aligned space and the original frame layout using the shared Torch deformer.
+
+#### Inputs:
+- `mode`: `UNWRAP` (canonical → unwrap size) or `WRAP` (unwrap size → original)
+- `image`: Canonical crops or processed faces
+- `unwrap_size`: Resolution for unwrap/warp operations (512/768/1024)
+- `mask`: Optional masks accompanying the batch
+- `fp_pipe`: Pipeline dictionary emitted by `FaceFitAndRestore`
+
+#### Outputs:
+- `image`: Warped batch in the requested space
+- `mask`: Updated masks
+- `fp_pipe`: Updated pipeline dictionary with stored metadata
+
+## Recommended Workflow
+
+The canonical FaceProcessor graph in ComfyUI follows this sequence:
+
+1. **ImageFeeder** (optional convenience node)
+2. **FaceFitAndRestore** with `mode=Fit` to produce canonical crops and an `fp_pipe` dictionary
+3. **FaceWrapper** with `mode=UNWRAP` to enter the editable unwrap space
+4. **Any custom face editing nodes** operating on the unwrapped images
+5. **FaceWrapper** with `mode=WRAP` to project edited faces back to the source frame
+6. **FaceFitAndRestore** with `mode=Restore` to composite the result into the original frame
+
+The `workflow/FaceProcessor_basic.json` sample graph wires these nodes together with sensible defaults that you can import directly into ComfyUI.
 
 ## Technical Details
 
@@ -93,59 +89,57 @@ Node for face cropping and restoration operations.
 
 #### Face Warping
 - Triangle-based warping using predefined mesh topology from MediaPipe Face Mesh
-- CPU implementation using pure Python/NumPy
-- CUDA-accelerated GPU implementation using CuPy
-- Handles both forward and inverse warping
+- Torch-powered implementation that runs on CPU or CUDA depending on the active PyTorch device
+- Handles both forward and inverse warping through the shared `TorchDeformer`
 
 ### Performance Considerations
 
-- GPU acceleration requires CUDA toolkit and CuPy
-- CPU fallback available for all operations
+- PyTorch automatically selects CPU or CUDA execution based on availability
 - Progressive feedback during long operations
 - Memory-efficient processing for large images
 
 ## Example Usage
 
-Basic face detection and visualization:
-```python
-face_wrapper = FaceWrapper()
-result_image, settings = face_wrapper.detect_face(
-    image=input_image,
-    mode="Debug",
-    device="CPU",
-    show_detection=True,
-    show_target=False,
-    landmark_size=4,
-    show_labels=True,
-    x_scale=1.0,
-    y_transform=0.0
-)
-```
-
 Face normalization workflow:
-1. Detect and normalize face:
 ```python
-# Unwrap face to normalized position
-normalized_face, settings = face_wrapper.detect_face(
+from faceprocessor.nodes_fit_restore import FaceFitAndRestore
+from faceprocessor.nodes_wrapper import FaceWrapper
+
+fit_node = FaceFitAndRestore()
+wrapper = FaceWrapper()
+
+faces, masks, fp_pipe = fit_node.process(
+    mode="Fit",
+    bbox_size="1024",
+    padding_percent=0.05,
     image=input_image,
-    mode="Un-Wrap",
-    device="CUDA",
-    x_scale=1.0,
-    y_transform=0.0
 )
-```
 
-2. Process normalized face with your preferred method
+unwrap_faces, unwrap_masks, fp_pipe = wrapper.process(
+    mode="UNWRAP",
+    image=faces,
+    unwrap_size="1024",
+    mask=masks,
+    fp_pipe=fp_pipe,
+)
 
-3. Restore face to original position:
+# ... run your edits on unwrap_faces ...
+edited_faces = unwrap_faces
 
-```python
-# Wrap processed face back
-final_image, _ = face_wrapper.detect_face(
-    image=processed_face,
-    mode="Wrap",
-    device="CUDA",
-    fp_pipe=settings
+rewrapped, rewrap_masks, fp_pipe = wrapper.process(
+    mode="WRAP",
+    image=edited_faces,
+    unwrap_size="1024",
+    mask=unwrap_masks,
+    fp_pipe=fp_pipe,
+)
+
+restored, restored_masks, _ = fit_node.process(
+    mode="Restore",
+    bbox_size="1024",
+    padding_percent=0.0,
+    image=rewrapped,
+    fp_pipe=fp_pipe,
 )
 ```
 
