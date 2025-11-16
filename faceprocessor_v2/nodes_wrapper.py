@@ -167,6 +167,7 @@ class FaceWrapperV2:
         triangles = torch.tensor(unwrap_model["triangles"], dtype=torch.long)
 
         image_out = self.deformer.warp(tensor, src_landmarks, dst_landmarks, triangles)
+        image_out = self._resize_image(image_out, (unwrap_size, unwrap_size))
         mask_image = self._mask_image(mask_tensor, (tensor.shape[1], tensor.shape[2]), tensor.device)
         mask_warped = self.deformer.warp(mask_image, src_landmarks, dst_landmarks, triangles)
         mask_out = self._image_to_mask(mask_warped, (unwrap_size, unwrap_size))
@@ -198,6 +199,7 @@ class FaceWrapperV2:
         triangles = torch.tensor(canonical_model["triangles"], dtype=torch.long)
 
         image_out = self.deformer.warp(tensor, src_landmarks, dst_landmarks, triangles)
+        image_out = self._resize_image(image_out, (canonical_size, canonical_size))
         mask_image = self._mask_image(mask_tensor, (tensor.shape[1], tensor.shape[2]), tensor.device)
         mask_warped = self.deformer.warp(mask_image, src_landmarks, dst_landmarks, triangles)
         mask_out = self._image_to_mask(mask_warped, (canonical_size, canonical_size))
@@ -244,6 +246,14 @@ class FaceWrapperV2:
         if mask.shape[1] != spatial[0] or mask.shape[2] != spatial[1]:
             mask = F.interpolate(mask.unsqueeze(0), size=spatial, mode="bilinear", align_corners=False)[0]
         return mask
+
+    def _resize_image(self, tensor: torch.Tensor, spatial: Tuple[int, int]) -> torch.Tensor:
+        if tensor.shape[1] == spatial[0] and tensor.shape[2] == spatial[1]:
+            return tensor
+
+        chw = tensor.permute(0, 3, 1, 2)
+        resized = F.interpolate(chw, size=spatial, mode="bilinear", align_corners=False)
+        return resized.permute(0, 2, 3, 1)
 
     def _default_mask(self, tensor: torch.Tensor) -> torch.Tensor:
         _, h, w, _ = tensor.shape
