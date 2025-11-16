@@ -1,6 +1,6 @@
 """Experimental tracker prototype kept for reference only.
 
-This node is not part of the core FaceProcessor v2.0 pipeline. It remains in the
+This node is not part of the core FaceProcessor pipeline. It remains in the
 repository for future experimentation and should be treated as unstable.
 """
 

@@ -149,12 +149,3 @@ class LandmarkMappings:
         except Exception as e:
             print(f"Error generating control points: {str(e)}")
             return None
-
-    # TODO: filter_trackers()
-    def filter_trackers(self, distance):
-        """
-        return list of base mediapipe landmarks ids as a list of trackers to use for cv2.goodFeaturesToTrack
-        based on given distance
-        """
-        trackers = []
-        return trackers

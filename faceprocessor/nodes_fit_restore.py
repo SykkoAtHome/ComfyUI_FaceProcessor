@@ -1,4 +1,4 @@
-"""FaceFitAndRestore v2 node implementation."""
+"""FaceFitAndRestore node implementation built on the FacePipe utilities."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from .frame_ids import resolve_frame_ids
 from .utils import ensure_face_model, get_logger, normalize_image_input, numpy_to_tensor, tensor_to_numpy
 
 
-class FaceFitAndRestoreV2:
+class FaceFitAndRestore:
     """Detects faces, prepares canonical crops, and restores frames via FacePipe."""
 
     CATEGORY = "Face Processor"
@@ -30,7 +30,7 @@ class FaceFitAndRestoreV2:
         self.image_processor = ImageProcessor()
         self.landmark_detector = MediaPipeLandmarks()
         self.dlib_refiner = DlibRefiner()
-        self.logger = get_logger("FaceFitAndRestoreV2")
+        self.logger = get_logger("FaceFitAndRestore")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -74,7 +74,7 @@ class FaceFitAndRestoreV2:
             frame_ids = resolve_frame_ids(pipe, len(tensors), fallback=normalized_frame_ids)
 
         if len(frame_ids) != len(tensors):
-            raise ValueError("Frame id list length mismatch for FaceFitAndRestoreV2 batch")
+            raise ValueError("Frame id list length mismatch for FaceFitAndRestore batch")
 
         if mode == "Fit":
             source_paths = self._build_source_path_list(source_payload, len(tensors))

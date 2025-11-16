@@ -1,4 +1,4 @@
-"""Facial landmark detectors and refiners for FaceProcessor v2."""
+"""Facial landmark detectors and refiners for FaceProcessor."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

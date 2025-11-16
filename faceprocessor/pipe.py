@@ -1,4 +1,4 @@
-"""Typed data model for the FaceProcessor v2 pipeline."""
+"""Typed data model for the FaceProcessor pipeline."""
 from __future__ import annotations
 
 from __future__ import annotations

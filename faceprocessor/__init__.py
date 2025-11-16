@@ -1,4 +1,4 @@
-"""FaceProcessor v2 package initialization."""
+"""FaceProcessor package initialization."""
 
 from .pipe import (
     FacePipe,
@@ -8,8 +8,8 @@ from .pipe import (
     get_or_create_frame,
     update_frame,
 )
-from .nodes_fit_restore import FaceFitAndRestoreV2
-from .nodes_wrapper import FaceWrapperV2
+from .nodes_fit_restore import FaceFitAndRestore
+from .nodes_wrapper import FaceWrapper
 from .frame_ids import resolve_frame_ids
 from .utils import (
     ensure_face_model,
@@ -23,8 +23,8 @@ from .landmarks import FaceLandmarksBase, MediaPipeLandmarks, DlibRefiner
 __all__ = [
     "FacePipe",
     "FrameData",
-    "FaceFitAndRestoreV2",
-    "FaceWrapperV2",
+    "FaceFitAndRestore",
+    "FaceWrapper",
     "TorchDeformer",
     "FaceLandmarksBase",
     "MediaPipeLandmarks",
